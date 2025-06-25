@@ -5,6 +5,7 @@ import jwt
 import datetime
 from sqlalchemy import and_
 import random
+import secrets
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -81,4 +82,7 @@ def create_company(db: Session, name: str, industry: str = None, address: str = 
     db.add(company)
     db.commit()
     db.refresh(company)
-    return company 
+    return company
+
+def generate_device_token(length: int = 32) -> str:
+    return secrets.token_urlsafe(length) 

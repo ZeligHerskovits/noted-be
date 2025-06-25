@@ -5,7 +5,9 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    company_id: int
+    company_name: str
+    industry: str
+    address: str
     class Config:
         orm_mode = True
 

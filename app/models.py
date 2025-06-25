@@ -30,4 +30,11 @@ class Company(Base):
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
     address = Column(String, nullable=True)
-    created_at = Column(DateTime, nullable=True) 
+    created_at = Column(DateTime, nullable=True)
+
+class TrustedDevice(Base):
+    __tablename__ = "trusted_devices"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    device_token = Column(String(255), nullable=False, unique=True)
+    created_at = Column(DateTime, server_default=func.now()) 

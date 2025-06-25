@@ -23,10 +23,10 @@ def list_users(
     users = get_all_users_with_roles(db)
     return users
 
-@router.post("/companies", response_model=CompanyResponse)
-def create_company_endpoint(request: CompanyCreate, db: Session = Depends(get_db)):
-    company = create_company(db, request.name, request.industry, request.address)
-    return company
+# @router.post("/companies", response_model=CompanyResponse)
+# def create_company_endpoint(request: CompanyCreate, db: Session = Depends(get_db)):
+#     company = create_company(db, request.name, request.industry, request.address)
+#     return company
 
 @router.get("/health/db")
 def db_health_check():
