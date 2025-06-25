@@ -32,7 +32,7 @@ app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 def root():
     """Root endpoint to test if the API is running"""
     return {
-        "message": "Noted API is running!", 
+        "message": "Noted API is running! 🚀✨", 
         "status": "healthy",
         "version": "1.0.0"
     }
