@@ -1,44 +1,43 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
-from sqlalchemy.orm import sessionmaker, declarative_base
-from passlib.context import CryptContext
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes import auth, users
+from app.models import Base
+from app.db import engine
 
-# Database connection
-DATABASE_URL = "postgresql+psycopg2://devuser:noteddev@1234@3.149.182.148:5432/noted_dev"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Initialize FastAPI app
+app = FastAPI(
+    title="Noted API", 
+    description="A comprehensive API for the Noted application", 
+    version="1.0.0"
+)
 
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change to your frontend URL(s) in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# SQLAlchemy model for the existing users table (fields must match the actual table)
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=False)
-    role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
+# Include routers from the app folder
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
+app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 
-# Pydantic model for registration
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: str
-    role_id: int
-
-app = FastAPI(title="Noted API", description="A simple API for testing", version="1.0.0")
-
+# Root endpoint to test if the API is running
 @app.get("/")
 def root():
     """Root endpoint to test if the API is running"""
-    return {"message": "Noted API is running!", "status": "healthy"}
+    return {
+        "message": "Noted API is running!", 
+        "status": "healthy",
+        "version": "1.0.0"
+    }
 
+# Health check endpoint
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
@@ -48,6 +47,7 @@ def health_check():
         "timestamp": "2024-01-01T00:00:00Z"
     }
 
+# Test endpoint
 @app.get("/test")
 def test_endpoint():
     """Simple test endpoint"""
@@ -61,29 +61,6 @@ def test_endpoint():
         }
     }
 
-@app.post("/auth/register")
-def register_user(request: RegisterRequest):
-    db = SessionLocal()
-    try:
-        # Check if user already exists
-        existing_user = db.query(User).filter(User.email == request.email).first()
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-        # Hash the password
-        hashed_password = get_password_hash(request.password)
-        # Create new user instance
-        new_user = User(
-            email=request.email,
-            hashed_password=hashed_password,
-            full_name=request.full_name,
-            role_id=request.role_id
-        )
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        return {"success": True, "user_id": new_user.id}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
