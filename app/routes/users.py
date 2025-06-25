@@ -5,7 +5,7 @@ from ..db import SessionLocal, DATABASE_URL
 from ..schemas import UserResponse, CompanyCreate, CompanyResponse
 from ..crud import get_all_users_with_roles, create_company
 from app.routes.auth import get_current_user_with_role
-
+ 
 router = APIRouter()
 
 def get_db():
