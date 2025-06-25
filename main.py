@@ -32,7 +32,34 @@ class RegisterRequest(BaseModel):
     full_name: str
     role_id: int
 
-app = FastAPI()
+app = FastAPI(title="Noted API", description="A simple API for testing", version="1.0.0")
+
+@app.get("/")
+def root():
+    """Root endpoint to test if the API is running"""
+    return {"message": "Noted API is running!", "status": "healthy"}
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "message": "API is working correctly",
+        "timestamp": "2024-01-01T00:00:00Z"
+    }
+
+@app.get("/test")
+def test_endpoint():
+    """Simple test endpoint"""
+    return {
+        "success": True,
+        "message": "Test endpoint is working!",
+        "data": {
+            "app_name": "Noted Backend",
+            "version": "1.0.0",
+            "environment": "development"
+        }
+    }
 
 @app.post("/auth/register")
 def register_user(request: RegisterRequest):
