@@ -86,9 +86,14 @@ def send_otp_email(to_email, otp_code):
     msg["Subject"] = subject
     msg["From"] = FROM_EMAIL
     msg["To"] = to_email
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+    try:
+        with smtplib.SMTP(SMTP_SERVER, 587) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+    except Exception as e:
+        print("SMTP error (OTP email):", e)
+        raise
 
 # Send password reset link using Elastic Email SMTP
 def send_reset_link(to_email, token):
@@ -116,9 +121,14 @@ def send_reset_link(to_email, token):
     msg["Subject"] = subject
     msg["From"] = FROM_EMAIL
     msg["To"] = to_email
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+    try:
+        with smtplib.SMTP(SMTP_SERVER, 587) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+    except Exception as e:
+        print("SMTP error (reset link):", e)
+        raise
 
 @router.post("/auth/login")
 def login_user(request: LoginRequest, response: Response, db: Session = Depends(get_db), device_token: str = Cookie(None)):
