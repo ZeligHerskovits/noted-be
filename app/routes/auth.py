@@ -68,7 +68,7 @@ def send_email_via_msmtp(to_email, subject, body):
     message = f"Subject: {subject}\nTo: {to_email}\nContent-Type: text/html; charset=utf-8\n\n{body}"
     try:
         process = subprocess.Popen(
-            ['msmtp', '-t', to_email],
+            ['/usr/bin/msmtp', '-t', to_email],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
