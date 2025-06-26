@@ -241,7 +241,7 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
     return {"success": True, "message": "Password reset link sent (simulated)"}
 
 @router.get("/me", response_model=UserResponse)
-def get_me(request: Request, current_user = Depends(get_current_user_with_role(["admin", "super_admin", "user"]))):
+def get_me(request: Request, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["admin", "super_admin", "user", "standard"]))):
     # Try to get token from cookie if not in header
     token = request.cookies.get("access_token")
     if not token:
@@ -252,7 +252,7 @@ def get_me(request: Request, current_user = Depends(get_current_user_with_role([
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=401, detail="Invalid token")
-        user = get_user_by_email(request.state.db, email)
+        user = get_user_by_email(db, email)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         return user
