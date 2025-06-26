@@ -63,7 +63,30 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     user = create_user(db, request.email, request.password, request.full_name, company.id)
     return {"success": True, "user_id": user.id, "company_id": company.id}
 
-# Send OTP email using Elastic Email SMTP
+def send_email_with_fallbacks(msg, to_email):
+    ports = [587, 2525, 465]
+    for port in ports:
+        try:
+            print(f"Trying SMTP on port {port}")
+            if port == 465:
+                with smtplib.SMTP_SSL(SMTP_SERVER, port) as server:
+                    server.ehlo()
+                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                    server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+            else:
+                with smtplib.SMTP(SMTP_SERVER, port) as server:
+                    server.connect(SMTP_SERVER, port)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                    server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+            print(f"Email sent successfully on port {port}")
+            return
+        except Exception as e:
+            print(f"SMTP error on port {port}: {e}")
+    raise Exception("All SMTP attempts failed.")
+
 def send_otp_email(to_email, otp_code):
     subject = "Noted: Your One-Time Password (OTP)"
     unsubscribe_url = "http://tracking.objectif.solutions/tracking/unsubscribe?d=B0yk-4Chqqgb0sZf1VnZ4u_RYT2O8lK8V933mXwu3lIqtOmDXaT3R1TLDms8Q3sj5u3oWCs26xm6Xgalni2FadXpH1j8givO2mgtis0kqn7a0"
@@ -76,7 +99,7 @@ def send_otp_email(to_email, otp_code):
         <p>This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
         <hr>
         <p style='font-size:12px;text-align:center;'>
-          <a href="{unsubscribe_url}">Unsubscribe</a>
+          <a href=\"{unsubscribe_url}\">Unsubscribe</a>
         </p>
         <p>Thank you,<br>The Noted Team</p>
       </body>
@@ -86,16 +109,8 @@ def send_otp_email(to_email, otp_code):
     msg["Subject"] = subject
     msg["From"] = FROM_EMAIL
     msg["To"] = to_email
-    try:
-        with smtplib.SMTP(SMTP_SERVER, 587) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
-    except Exception as e:
-        print("SMTP error (OTP email):", e)
-        raise
+    send_email_with_fallbacks(msg, to_email)
 
-# Send password reset link using Elastic Email SMTP
 def send_reset_link(to_email, token):
     subject = "Noted: Password Reset Request"
     reset_url = f"https://noteddev.objectif.solutions/reset-password?email={to_email}&token={token}"
@@ -121,14 +136,7 @@ def send_reset_link(to_email, token):
     msg["Subject"] = subject
     msg["From"] = FROM_EMAIL
     msg["To"] = to_email
-    try:
-        with smtplib.SMTP(SMTP_SERVER, 587) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
-    except Exception as e:
-        print("SMTP error (reset link):", e)
-        raise
+    send_email_with_fallbacks(msg, to_email)
 
 @router.post("/auth/login")
 def login_user(request: LoginRequest, response: Response, db: Session = Depends(get_db), device_token: str = Cookie(None)):
