@@ -6,11 +6,12 @@ import datetime
 from sqlalchemy import and_
 import random
 import secrets
+import os
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SECRET_KEY = "your_secret_key_here"  # Change this to a secure value in production
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)

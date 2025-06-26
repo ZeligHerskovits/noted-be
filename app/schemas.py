@@ -24,8 +24,7 @@ class OTPVerifyRequest(BaseModel):
     otp_code: str
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    otp_code: str
+    token: str
     new_password: str
 
 class ForgotPasswordRequest(BaseModel):
