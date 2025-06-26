@@ -12,6 +12,7 @@ from ..models import TrustedDevice
 import smtplib
 from email.mime.text import MIMEText
 import os
+import subprocess
 
 router = APIRouter()
 
@@ -63,29 +64,23 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     user = create_user(db, request.email, request.password, request.full_name, company.id)
     return {"success": True, "user_id": user.id, "company_id": company.id}
 
-def send_email_with_fallbacks(msg, to_email):
-    ports = [587, 2525, 465]
-    for port in ports:
-        try:
-            print(f"Trying SMTP on port {port}")
-            if port == 465:
-                with smtplib.SMTP_SSL(SMTP_SERVER, port) as server:
-                    server.ehlo()
-                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                    server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
-            else:
-                with smtplib.SMTP(SMTP_SERVER, port) as server:
-                    server.connect(SMTP_SERVER, port)
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                    server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
-            print(f"Email sent successfully on port {port}")
-            return
-        except Exception as e:
-            print(f"SMTP error on port {port}: {e}")
-    raise Exception("All SMTP attempts failed.")
+def send_email_via_msmtp(to_email, subject, body):
+    message = f"Subject: {subject}\nTo: {to_email}\nContent-Type: text/html; charset=utf-8\n\n{body}"
+    try:
+        process = subprocess.Popen(
+            ['msmtp', '-t', to_email],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate(message.encode())
+        print("msmtp stdout:", stdout.decode())
+        print("msmtp stderr:", stderr.decode())
+        if process.returncode != 0:
+            raise Exception(f"msmtp failed: {stderr.decode()}")
+    except Exception as e:
+        print(f"msmtp error: {e}")
+        raise
 
 def send_otp_email(to_email, otp_code):
     subject = "Noted: Your One-Time Password (OTP)"
@@ -105,11 +100,7 @@ def send_otp_email(to_email, otp_code):
       </body>
     </html>
     """
-    msg = MIMEText(body, "html")
-    msg["Subject"] = subject
-    msg["From"] = FROM_EMAIL
-    msg["To"] = to_email
-    send_email_with_fallbacks(msg, to_email)
+    send_email_via_msmtp(to_email, subject, body)
 
 def send_reset_link(to_email, token):
     subject = "Noted: Password Reset Request"
@@ -132,11 +123,7 @@ def send_reset_link(to_email, token):
   </body>
 </html>
 """
-    msg = MIMEText(body, "html")
-    msg["Subject"] = subject
-    msg["From"] = FROM_EMAIL
-    msg["To"] = to_email
-    send_email_with_fallbacks(msg, to_email)
+    send_email_via_msmtp(to_email, subject, body)
 
 @router.post("/auth/login")
 def login_user(request: LoginRequest, response: Response, db: Session = Depends(get_db), device_token: str = Cookie(None)):
