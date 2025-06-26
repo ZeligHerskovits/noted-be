@@ -13,6 +13,7 @@ import smtplib
 from email.mime.text import MIMEText
 import os
 import subprocess
+import sys
 
 router = APIRouter()
 
@@ -65,22 +66,39 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     return {"success": True, "user_id": user.id, "company_id": company.id}
 
 def send_email_via_msmtp(to_email, subject, body):
-    message = f"Subject: {subject}\nTo: {to_email}\nContent-Type: text/html; charset=utf-8\n\n{body}"
-    try:
-        process = subprocess.Popen(
-            ['/usr/bin/msmtp', '-t', to_email],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        stdout, stderr = process.communicate(message.encode())
-        print("msmtp stdout:", stdout.decode())
-        print("msmtp stderr:", stderr.decode())
-        if process.returncode != 0:
-            raise Exception(f"msmtp failed: {stderr.decode()}")
-    except Exception as e:
-        print(f"msmtp error: {e}")
-        raise
+    if sys.platform.startswith("linux"):
+        msmtp_path = "/usr/bin/msmtp"
+        message = f"Subject: {subject}\nTo: {to_email}\nContent-Type: text/html; charset=utf-8\n\n{body}"
+        try:
+            process = subprocess.Popen(
+                [msmtp_path, '-t', to_email],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            stdout, stderr = process.communicate(message.encode())
+            print("msmtp stdout:", stdout.decode())
+            print("msmtp stderr:", stderr.decode())
+            if process.returncode != 0:
+                raise Exception(f"msmtp failed: {stderr.decode()}")
+        except Exception as e:
+            print(f"msmtp error: {e}")
+            raise
+    else:
+        # Use smtplib for local development (Windows, Mac, etc.)
+        msg = MIMEText(body, "html")
+        msg["Subject"] = subject
+        msg["From"] = FROM_EMAIL
+        msg["To"] = to_email
+        try:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(FROM_EMAIL, to_email, msg.as_string())
+            print("Email sent via smtplib (local)")
+        except Exception as e:
+            print(f"smtplib error: {e}")
+            raise
 
 def send_otp_email(to_email, otp_code):
     subject = "Noted: Your One-Time Password (OTP)"
