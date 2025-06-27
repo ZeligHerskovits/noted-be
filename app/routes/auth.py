@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Security, Response, Cookie, Request
+from fastapi import APIRouter, HTTPException, Depends, Security, Response, Cookie, Request, Body
 from sqlalchemy.orm import Session
 from ..db import SessionLocal
 from ..schemas import RegisterRequest, LoginRequest, TokenResponse, OTPVerifyRequest, ResetPasswordRequest, ForgotPasswordRequest, UserResponse
@@ -266,4 +266,16 @@ admin_only = get_current_user_with_role(["admin"])
 @router.get("/admin/dashboard")
 def admin_dashboard(current_user = Depends(admin_only)):
     return {"message": "Welcome Admin"}
+
+@router.post("/auth/resend-otp")
+def resend_otp(request: dict = Body(...), db: Session = Depends(get_db)):
+    email = request.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    user = get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    otp_code = generate_and_store_otp(db, user)
+    send_otp_email(user.email, otp_code)
+    return {"detail": "OTP sent"}
  

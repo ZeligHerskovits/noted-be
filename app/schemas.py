@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
-import datetime
+from datetime import datetime
+from typing import Optional
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -48,6 +49,36 @@ class CompanyResponse(BaseModel):
     name: str
     industry: str | None = None
     address: str | None = None
-    created_at: datetime.datetime | None = None
+    created_at: Optional[datetime] = None
+    class Config:
+        orm_mode = True
+
+class PatientCreate(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+    phone: Optional[str] = None
+    email: str
+    address: str
+
+class PatientUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    user_id: Optional[int] = None
+
+class PatientResponse(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    user_id: Optional[int] = None
+    created_at: Optional[datetime] = None
     class Config:
         orm_mode = True 
