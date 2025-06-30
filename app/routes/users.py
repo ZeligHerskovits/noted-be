@@ -5,7 +5,8 @@ from ..db import SessionLocal, DATABASE_URL
 from ..schemas import UserResponse, CompanyCreate, CompanyResponse
 from ..crud import get_all_users_with_roles, create_company
 from app.routes.auth import get_current_user_with_role
- 
+from ..models import Company
+
 router = APIRouter()
 
 def get_db():
@@ -20,6 +21,8 @@ def list_users(
     current_user = Depends(get_current_user_with_role(["admin", "super_admin"])),
     db: Session = Depends(get_db)
 ):
+    if getattr(current_user, 'role_id', None) != 1:
+        raise HTTPException(status_code=403, detail="Forbidden: Only admins can access this endpoint.")
     users = get_all_users_with_roles(db)
     return users
 
@@ -43,4 +46,4 @@ def db_health_check():
             "status": "fail",
             "detail": str(e),
             "connection": DATABASE_URL
-        } 
+        }

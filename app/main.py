@@ -4,6 +4,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import auth, users, patients
+from .routes import companies
 from .models import Base
 from .db import engine
 
@@ -33,6 +34,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(patients.router, prefix="/api/v1", tags=["Patients"])
+app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
 
 # Root endpoint to test if the API is running
 @app.get("/")
