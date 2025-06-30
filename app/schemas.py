@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 class RegisterRequest(BaseModel):
@@ -56,7 +56,7 @@ class CompanyResponse(BaseModel):
 class PatientCreate(BaseModel):
     first_name: str
     last_name: str
-    date_of_birth: datetime
+    date_of_birth: date
     phone: Optional[str] = None
     email: str
     address: str
@@ -64,7 +64,7 @@ class PatientCreate(BaseModel):
 class PatientUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
+    date_of_birth: Optional[date] = None
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     address: Optional[str] = None
@@ -74,7 +74,7 @@ class PatientResponse(BaseModel):
     id: int
     first_name: str
     last_name: str
-    date_of_birth: datetime
+    date_of_birth: date
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     address: Optional[str] = None
