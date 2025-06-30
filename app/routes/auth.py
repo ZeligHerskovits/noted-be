@@ -144,14 +144,13 @@ def send_reset_link(to_email, token):
     send_email_via_msmtp(to_email, subject, body)
 
 @router.post("/auth/login")
-def login_user(request: LoginRequest, response: Response, db: Session = Depends(get_db), device_token: str = Cookie(None)):
+def login_user(request: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = get_user_by_email(db, request.email)
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    trusted = None
-    if device_token:
-        trusted = db.query(TrustedDevice).filter_by(user_id=user.id, device_token=device_token).first()
-    if trusted:
+    device_id = request.deviceId
+    if user.trusted_devices and device_id in user.trusted_devices:
+        # Device is trusted, skip OTP
         role = get_user_role(db, user)
         token = create_access_token({"sub": user.email}, role=role)
         response.set_cookie(
@@ -161,16 +160,14 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
             samesite="lax",
             secure=False  # Set to True in production with HTTPS
         )
-        return {"access_token": token, "token_type": "bearer"}
+        return {"access_token": token, "token_type": "bearer", "otpRequired": False}
     else:
         otp_code = generate_and_store_otp(db, user)
         send_otp_email(user.email, otp_code)
-        temp_device_token = generate_device_token(16)
-        response.set_cookie(key="temp_device_token", value=temp_device_token, httponly=True)
-        return {"otp_required": True, "message": "OTP sent to email", "email": user.email}
+        return {"otpRequired": True, "message": "OTP sent to email", "email": user.email}
 
 @router.post("/auth/verify-otp")
-def verify_otp(request: OTPVerifyRequest, response: Response, db: Session = Depends(get_db), temp_device_token: str = Cookie(None)):
+def verify_otp(request: OTPVerifyRequest, response: Response, db: Session = Depends(get_db)):
     user = get_user_by_email(db, request.email)
     if not user:
         raise HTTPException(status_code=400, detail="User not found")
@@ -180,12 +177,13 @@ def verify_otp(request: OTPVerifyRequest, response: Response, db: Session = Depe
     if otp.expires_at < datetime.datetime.utcnow():
         raise HTTPException(status_code=400, detail="OTP expired")
     mark_otp_used(db, otp)
-    if not temp_device_token:
-        temp_device_token = generate_device_token(16)
-    trusted = TrustedDevice(user_id=user.id, device_token=temp_device_token)
-    db.add(trusted)
-    db.commit()
-    response.set_cookie(key="device_token", value=temp_device_token, httponly=True)
+    device_id = request.deviceId
+    if not user.trusted_devices:
+        user.trusted_devices = []
+    if device_id not in user.trusted_devices:
+        user.trusted_devices.append(device_id)
+        db.commit()
+        db.refresh(user)
     # Issue JWT as cookie
     role = get_user_role(db, user)
     token = create_access_token({"sub": user.email}, role=role)

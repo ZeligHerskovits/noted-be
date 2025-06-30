@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, Date
 from sqlalchemy.sql import func
 from .db import Base
 
@@ -10,6 +10,7 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    trusted_devices = Column(JSON, default=list)  # List of trusted device IDs
 
 class Otp(Base):
     __tablename__ = "otps"
@@ -32,19 +33,12 @@ class Company(Base):
     address = Column(String, nullable=True)
     created_at = Column(DateTime, nullable=True)
 
-class TrustedDevice(Base):
-    __tablename__ = "trusted_devices"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    device_token = Column(String(255), nullable=False, unique=True)
-    created_at = Column(DateTime, server_default=func.now())
-
 class Patient(Base):
     __tablename__ = "patients"
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
-    date_of_birth = Column(DateTime, nullable=False)
+    date_of_birth = Column(Date, nullable=False)
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     address = Column(String, nullable=True)

@@ -15,6 +15,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    deviceId: str
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -23,6 +24,7 @@ class TokenResponse(BaseModel):
 class OTPVerifyRequest(BaseModel):
     email: EmailStr
     otp_code: str
+    deviceId: str
 
 class ResetPasswordRequest(BaseModel):
     token: str
