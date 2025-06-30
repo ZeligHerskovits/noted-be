@@ -25,6 +25,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
 SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
 FRONTEND_RESET_URL = os.getenv("FRONTEND_RESET_URL", "https://noteddevapi.objectif.solutions/reset-password")
+ENV = os.getenv("ENV", "production")
 
 def get_db():
     db = SessionLocal()
@@ -148,8 +149,9 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     device_id = request.deviceId
-    if user.trusted_devices and device_id in user.trusted_devices:
-        # Device is trusted, skip OTP
+
+    # Skip OTP in development/local
+    if ENV == "development":
         role = get_user_role(db, user)
         token = create_access_token({"sub": user.email}, role=role)
         response.set_cookie(
@@ -158,6 +160,19 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
             httponly=True,
             samesite="lax",
             secure=False  # Set to True in production with HTTPS
+        )
+        return {"access_token": token, "token_type": "bearer", "otpRequired": False}
+
+    # Production logic (with OTP)
+    if user.trusted_devices and device_id in user.trusted_devices:
+        role = get_user_role(db, user)
+        token = create_access_token({"sub": user.email}, role=role)
+        response.set_cookie(
+            key="access_token",
+            value=token,
+            httponly=True,
+            samesite="lax",
+            secure=False
         )
         return {"access_token": token, "token_type": "bearer", "otpRequired": False}
     else:
