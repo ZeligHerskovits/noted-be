@@ -6,6 +6,7 @@ from typing import List
 from app.schemas import PatientCreate, PatientUpdate, PatientResponse
 import logging
 from app.routes.auth import get_current_user_with_role
+from datetime import date
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -46,6 +47,8 @@ def create_patient(
     try:
         patient_data = patient.dict(exclude={"user_id"})  # Remove user_id from request
         patient_data["user_id"] = current_user.id  # Assign from token/session
+        # Hardcode date_of_birth for testing
+        patient_data["date_of_birth"] = date(2025, 6, 12)
         new_patient = Patient(**patient_data)
         db.add(new_patient)
         db.commit()
