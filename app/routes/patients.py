@@ -47,8 +47,7 @@ def create_patient(
     try:
         patient_data = patient.dict(exclude={"user_id"})  # Remove user_id from request
         patient_data["user_id"] = current_user.id  # Assign from token/session
-        # Hardcode date_of_birth for testing
-        patient_data["date_of_birth"] = date(2025, 6, 12)
+        # Use date_of_birth from frontend (no hardcoding)
         new_patient = Patient(**patient_data)
         db.add(new_patient)
         db.commit()
