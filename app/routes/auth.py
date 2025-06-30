@@ -8,7 +8,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 from typing import List
 import secrets
-from ..models import TrustedDevice
 import smtplib
 from email.mime.text import MIMEText
 import os

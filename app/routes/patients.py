@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import Patient
 from typing import List
-from datetime import datetime
 from app.schemas import PatientCreate, PatientUpdate, PatientResponse
 import logging
 from app.routes.auth import get_current_user_with_role
