@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, Date
 from sqlalchemy.sql import func
+from sqlalchemy.ext.mutable import MutableList
 from .db import Base
 
 class User(Base):
@@ -10,7 +11,7 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
-    trusted_devices = Column(JSON, default=list)  # List of trusted device IDs
+    trusted_devices = Column(MutableList.as_mutable(JSON), default=list)  # List of trusted device IDs
 
 class Otp(Base):
     __tablename__ = "otps"
