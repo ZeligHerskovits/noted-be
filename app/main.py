@@ -20,10 +20,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Local React dev
-        "https://noteddev.objectif.solutions"  # Production FE domain
-    ],
+    allow_origins=["*"],  # <-- TEMPORARILY allow all origins for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
