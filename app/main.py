@@ -20,7 +20,10 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # <-- TEMPORARILY allow all origins for testing
+   allow_origins=[
+        "http://localhost:3000",
+        "https://noteddev.objectif.solutions"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
