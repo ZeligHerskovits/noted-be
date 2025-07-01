@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     email: EmailStr
     full_name: str
     role_id: int
+    company_name: Optional[str] = None
+    role_name: Optional[str] = None
     class Config:
         orm_mode = True
 

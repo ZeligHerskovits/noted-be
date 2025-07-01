@@ -76,7 +76,16 @@ def generate_and_store_otp(db: Session, user: User, expires_minutes: int = 10):
     return otp_code
 
 def get_all_users_with_roles(db: Session):
-    return db.query(User).all()
+    users = db.query(User).all()
+    companies = {c.id: c.name for c in db.query(Company).all()}
+    roles = {r.id: r.name for r in db.query(Role).all()}
+    enriched_users = []
+    for user in users:
+        user_dict = user.__dict__.copy()
+        user_dict['company_name'] = companies.get(user.company_id)
+        user_dict['role_name'] = roles.get(user.role_id)
+        enriched_users.append(user_dict)
+    return enriched_users
 
 def create_company(db: Session, name: str, industry: str = None, address: str = None):
     company = Company(name=name, industry=industry, address=address)
