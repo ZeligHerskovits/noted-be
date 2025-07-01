@@ -151,17 +151,17 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
     device_id = request.deviceId
 
     # Skip OTP in development/local
-    if ENV == "development":
-        role = get_user_role(db, user)
-        token = create_access_token({"sub": user.email}, role=role)
-        response.set_cookie(
-            key="access_token",
-            value=token,
-            httponly=True,
-            samesite="lax",
-            secure=False  # Set to True in production with HTTPS
-        )
-        return {"access_token": token, "token_type": "bearer", "otpRequired": False}
+    # if ENV == "development":
+    #     role = get_user_role(db, user)
+    #     token = create_access_token({"sub": user.email}, role=role)
+    #     response.set_cookie(
+    #         key="access_token",
+    #         value=token,
+    #         httponly=True,
+    #         samesite="lax",
+    #         secure=False  # Set to True in production with HTTPS
+    #     )
+    #     return {"access_token": token, "token_type": "bearer", "otpRequired": False}
 
     # Production logic (with OTP)
     if user.trusted_devices and device_id in user.trusted_devices:
