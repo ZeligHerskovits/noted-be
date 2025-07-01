@@ -351,4 +351,25 @@ def resend_otp(request: dict = Body(...), db: Session = Depends(get_db)):
     otp_code = generate_and_store_otp(db, user)
     send_otp_email(user.email, otp_code)
     return {"detail": "OTP sent"}
+
+@router.post("/auth/resend-verification")
+def resend_verification(request: dict = Body(...), db: Session = Depends(get_db)):
+    email = request.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    user = get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.is_email_verified:
+        return {"detail": "Email already verified."}
+    # Generate a new token and send verification email
+    import uuid
+    token = str(uuid.uuid4())
+    set_email_verification_token(db, user, token)
+    verification_link = f"{FRONTEND_VERIFY_URL}?token={token}"
+    subject = "Verify your Noted account"
+    body = f"<p>Thank you for registering. Please verify your email by clicking the button below:</p>"
+    body += f'<p><a href="{verification_link}" style="display:inline-block;padding:10px 20px;background-color:#3b82f6;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">Verify Account</a></p>'
+    send_email_via_msmtp(user.email, subject, body)
+    return {"detail": "Verification email resent."}
  
