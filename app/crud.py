@@ -95,4 +95,19 @@ def create_company(db: Session, name: str, industry: str = None, address: str = 
     return company
 
 def generate_device_token(length: int = 32) -> str:
-    return secrets.token_urlsafe(length) 
+    return secrets.token_urlsafe(length)
+
+def set_email_verification_token(db: Session, user: User, token: str):
+    user.email_verification_token = token
+    db.commit()
+    db.refresh(user)
+    return user
+
+def verify_email_token(db: Session, token: str):
+    user = db.query(User).filter(User.email_verification_token == token).first()
+    if user:
+        user.is_email_verified = True
+        user.email_verification_token = None
+        db.commit()
+        db.refresh(user)
+    return user 

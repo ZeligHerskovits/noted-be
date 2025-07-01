@@ -12,6 +12,8 @@ class User(Base):
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
     trusted_devices = Column(MutableList.as_mutable(JSON), default=list)  # List of trusted device IDs
+    is_email_verified = Column(Boolean, default=False, nullable=False)
+    email_verification_token = Column(String, nullable=True)
 
 class Otp(Base):
     __tablename__ = "otps"

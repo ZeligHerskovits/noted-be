@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Security, Response, Cookie, Request, Body
+from fastapi import APIRouter, HTTPException, Depends, Security, Response, Cookie, Request, Body, status
 from sqlalchemy.orm import Session
 from ..db import SessionLocal
 from ..schemas import RegisterRequest, LoginRequest, TokenResponse, OTPVerifyRequest, ResetPasswordRequest, ForgotPasswordRequest, UserResponse
-from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash
+from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash, set_email_verification_token, verify_email_token
 import datetime
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
@@ -13,6 +13,8 @@ from email.mime.text import MIMEText
 import os
 import subprocess
 import sys
+from ..models import Company, Role
+import uuid
 
 router = APIRouter()
 
@@ -25,6 +27,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
 SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
 FRONTEND_RESET_URL = os.getenv("FRONTEND_RESET_URL", "https://noteddevapi.objectif.solutions/reset-password")
+FRONTEND_VERIFY_URL = os.getenv("FRONTEND_VERIFY_URL", "https://noted.objectif.solutions/verify-email")
 ENV = os.getenv("ENV", "production")
 
 def get_db():
@@ -63,7 +66,31 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     company = create_company(db, request.company_name, request.industry, request.address)
     # Create user with new company_id
     user = create_user(db, request.email, request.password, request.full_name, company.id)
+    # Generate verification token and send email
+    token = str(uuid.uuid4())
+    set_email_verification_token(db, user, token)
+    verification_link = f"{FRONTEND_VERIFY_URL}?token={token}"
+    subject = "Verify your Noted account"
+    body = f"<p>Thank you for registering. Please verify your email by clicking the button below:</p>"
+    body += f'<p><a href="{verification_link}" style="display:inline-block;padding:10px 20px;background-color:#3b82f6;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">Verify Account</a></p>'
+    send_email_via_msmtp(user.email, subject, body)
     return {"success": True, "user_id": user.id, "company_id": company.id}
+
+@router.get("/auth/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = verify_email_token(db, token)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token.")
+    # Send welcome email
+    subject = "Welcome to Noted!"
+    body = """
+    <p>Welcome to Noted!</p>
+    <p>Your email has been verified and your account is now active.</p>
+    <p>We're excited to have you on board. You can now <a href='https://noted.objectif.solutions/login'>log in</a> and start using the platform.</p>
+    <p>Best regards,<br>The Noted Team</p>
+    """
+    send_email_via_msmtp(user.email, subject, body)
+    return {"success": True, "message": "Email verified successfully."}
 
 def send_email_via_msmtp(to_email, subject, body):
     if sys.platform.startswith("linux"):
@@ -148,6 +175,8 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
     user = get_user_by_email(db, request.email)
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.is_email_verified:
+        raise HTTPException(status_code=403, detail="Email not verified. Please check your inbox.")
     device_id = request.deviceId
 
     # Skip OTP in development/local
@@ -258,20 +287,27 @@ def get_me(request: Request, db: Session = Depends(get_db), current_user = Depen
     token = request.cookies.get("access_token")
     if not token:
         # Fallback to dependency (which checks header)
-        return current_user
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        email = payload.get("sub")
-        if not email:
+        user = current_user
+    else:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            email = payload.get("sub")
+            if not email:
+                raise HTTPException(status_code=401, detail="Invalid token")
+            user = get_user_by_email(db, email)
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found")
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expired")
+        except jwt.InvalidTokenError:
             raise HTTPException(status_code=401, detail="Invalid token")
-        user = get_user_by_email(db, email)
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    # Enrich user with company_name and role_name
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    role = db.query(Role).filter(Role.id == user.role_id).first()
+    user_dict = user.__dict__.copy()
+    user_dict['company_name'] = company.name if company else None
+    user_dict['role_name'] = role.name if role else None
+    return user_dict
 
 admin_only = get_current_user_with_role(["admin"])
 

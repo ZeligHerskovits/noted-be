@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     role_id: int
     company_name: Optional[str] = None
     role_name: Optional[str] = None
+    is_email_verified: bool
     class Config:
         orm_mode = True
 
@@ -85,4 +86,7 @@ class PatientResponse(BaseModel):
     user_id: Optional[int] = None
     created_at: Optional[datetime] = None
     class Config:
-        orm_mode = True 
+        orm_mode = True
+
+class EmailVerificationRequest(BaseModel):
+    token: str 
