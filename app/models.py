@@ -14,6 +14,8 @@ class User(Base):
     trusted_devices = Column(MutableList.as_mutable(JSON), default=list)  # List of trusted device IDs
     is_email_verified = Column(Boolean, default=False, nullable=False)
     email_verification_token = Column(String, nullable=True)
+    mobile_phone = Column(String(50), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
 
 class Otp(Base):
     __tablename__ = "otps"
@@ -33,7 +35,8 @@ class Company(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
-    address = Column(String, nullable=True)
+    company_address = Column(String, nullable=True)
+    company_phone = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=True)
 
 class Patient(Base):

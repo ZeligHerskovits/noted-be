@@ -1,14 +1,16 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, Any
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str
+    mobile: Optional[str] = None
     company_name: str
     industry: str
-    address: str
+    company_address: Optional[str] = None
+    company_phone: Optional[str] = None
     class Config:
         orm_mode = True
 
@@ -41,8 +43,17 @@ class UserResponse(BaseModel):
     company_name: Optional[str] = None
     role_name: Optional[str] = None
     is_email_verified: bool
+    is_active: bool
+    mobile_phone: Optional[str] = None
+    company: Optional[Any] = None
     class Config:
         orm_mode = True
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    mobile_phone: Optional[str] = None
+    # Add more fields as needed
 
 class CompanyCreate(BaseModel):
     name: str
@@ -53,10 +64,19 @@ class CompanyResponse(BaseModel):
     id: int
     name: str
     industry: str | None = None
-    address: str | None = None
+    company_address: str | None = None
+    company_phone: str | None = None
     created_at: Optional[datetime] = None
     class Config:
         orm_mode = True
+        from_attributes = True
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    company_address: Optional[str] = None
+    company_phone: Optional[str] = None
+    industry: Optional[str] = None
+    # Add more fields as needed
 
 class PatientCreate(BaseModel):
     first_name: str

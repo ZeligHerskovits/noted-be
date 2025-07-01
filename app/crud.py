@@ -19,9 +19,9 @@ def get_password_hash(password: str) -> str:
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
-def create_user(db: Session, email: str, password: str, full_name: str, company_id: int):
+def create_user(db: Session, email: str, password: str, full_name: str, company_id: int, mobile_phone: str = None):
     hashed_password = get_password_hash(password)
-    user = User(email=email, hashed_password=hashed_password, full_name=full_name, role_id=2, company_id=company_id)
+    user = User(email=email, hashed_password=hashed_password, full_name=full_name, role_id=2, company_id=company_id, mobile_phone=mobile_phone)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -84,11 +84,12 @@ def get_all_users_with_roles(db: Session):
         user_dict = user.__dict__.copy()
         user_dict['company_name'] = companies.get(user.company_id)
         user_dict['role_name'] = roles.get(user.role_id)
+        user_dict['is_active'] = user.is_active
         enriched_users.append(user_dict)
     return enriched_users
 
-def create_company(db: Session, name: str, industry: str = None, address: str = None):
-    company = Company(name=name, industry=industry, address=address)
+def create_company(db: Session, name: str, industry: str, company_address: str = None, company_phone: str = None):
+    company = Company(name=name, industry=industry, company_address=company_address, company_phone=company_phone)
     db.add(company)
     db.commit()
     db.refresh(company)
