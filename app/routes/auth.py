@@ -179,10 +179,10 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
     user = get_user_by_email(db, request.email)
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Account is inactive. Please contact your admin.")
     if not user.is_email_verified:
         raise HTTPException(status_code=403, detail="Account not verified. Please check your email.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is inactive. Please contact your admin.")
     device_id = request.deviceId
 
     # Skip OTP in development/local
