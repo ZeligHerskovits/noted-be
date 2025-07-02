@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..db import SessionLocal
-from ..models import Company
+from ..models import Company, User, Role
 from ..schemas import CompanyResponse, CompanyCreate, CompanyUpdate
 from app.routes.auth import get_current_user_with_role
 
@@ -16,11 +16,11 @@ def get_db():
 
 @router.get("/companies", response_model=list[CompanyResponse], tags=["Companies"])
 def list_companies(
-    current_user = Depends(get_current_user_with_role(["admin", "super_admin"])),
+    current_user = Depends(get_current_user_with_role(["super_admin"])),
     db: Session = Depends(get_db)
 ):
-    if getattr(current_user, 'role_id', None) != 1:
-        raise HTTPException(status_code=403, detail="Forbidden: Only admins can access this endpoint.")
+    if getattr(current_user, 'role_id', None) != 3:
+        raise HTTPException(status_code=403, detail="Forbidden: Only super admins can access this endpoint.")
     companies = db.query(Company).all()
     return companies
 
@@ -33,4 +33,26 @@ def update_company(company_id: int, update: CompanyUpdate, db: Session = Depends
         setattr(company, key, value)
     db.commit()
     db.refresh(company)
-    return company 
+    return company
+
+@router.get("/companies/{company_id}")
+def get_company_with_users(company_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin"]))):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    users = db.query(User).filter(User.company_id == company_id).all()
+    roles = {r.id: r.name for r in db.query(Role).all()}
+    user_list = []
+    for user in users:
+        user_list.append({
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "role_id": user.role_id,
+            "role_name": roles.get(user.role_id),
+            "is_active": user.is_active,
+            "user_type": user.user_type
+        })
+    company_dict = company.__dict__.copy()
+    company_dict['users'] = user_list
+    return company_dict 

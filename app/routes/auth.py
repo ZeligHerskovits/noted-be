@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 import os
 import subprocess
 import sys
-from ..models import Company, Role
+from ..models import Company, Role, User
 import uuid
 
 router = APIRouter()
@@ -63,9 +63,9 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     if get_user_by_email(db, request.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     # Create company
-    company = create_company(db, request.company_name, request.industry, request.company_address, request.company_phone)
+    company = create_company(db, request.company_name, request.industry, request.emr)
     # Create user with new company_id
-    user = create_user(db, request.email, request.password, request.full_name, company.id, request.mobile)
+    user = create_user(db, request.email, request.password, request.full_name, company.id, request.mobile, user_type=request.industry)
     # Generate verification token and send email
     token = str(uuid.uuid4())
     set_email_verification_token(db, user, token)
@@ -179,6 +179,8 @@ def login_user(request: LoginRequest, response: Response, db: Session = Depends(
     user = get_user_by_email(db, request.email)
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is inactive. Please contact your admin.")
     if not user.is_email_verified:
         raise HTTPException(status_code=403, detail="Account not verified. Please check your email.")
     device_id = request.deviceId
@@ -308,7 +310,8 @@ def get_me(request: Request, db: Session = Depends(get_db), current_user = Depen
     # Enrich user with company_name, role_name, is_active, and company info
     company = db.query(Company).filter(Company.id == user.company_id).first()
     role = db.query(Role).filter(Role.id == user.role_id).first()
-    user_dict = user.__dict__.copy()
+    user_response = UserResponse.from_orm(user)
+    user_dict = user_response.dict()
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role.name if role else None
     user_dict['is_active'] = user.is_active
@@ -320,6 +323,11 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Prevent duplicate email
+    if update.email and update.email != user.email:
+        existing = db.query(User).filter(User.email == update.email, User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use.")
     for key, value in update.dict(exclude_unset=True).items():
         setattr(user, key, value)
     db.commit()
@@ -327,18 +335,19 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
     # Enrich user with company_name, role_name, is_active, and company info
     company = db.query(Company).filter(Company.id == user.company_id).first()
     role = db.query(Role).filter(Role.id == user.role_id).first()
-    user_dict = user.__dict__.copy()
+    user_response = UserResponse.from_orm(user)
+    user_dict = user_response.dict()
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role.name if role else None
     user_dict['is_active'] = user.is_active
-    user_dict['company'] = company.__dict__ if company else None
+    user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     return user_dict
 
-admin_only = get_current_user_with_role(["admin"])
+admin_only = get_current_user_with_role(["super_admin"])
 
 @router.get("/admin/dashboard")
 def admin_dashboard(current_user = Depends(admin_only)):
-    return {"message": "Welcome Admin"}
+    return {"message": "Welcome Super Admin"}
 
 @router.post("/auth/resend-otp")
 def resend_otp(request: dict = Body(...), db: Session = Depends(get_db)):

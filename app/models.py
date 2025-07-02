@@ -16,6 +16,7 @@ class User(Base):
     email_verification_token = Column(String, nullable=True)
     mobile_phone = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    user_type = Column(String(100), nullable=True)
 
 class Otp(Base):
     __tablename__ = "otps"
@@ -35,8 +36,7 @@ class Company(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
-    company_address = Column(String, nullable=True)
-    company_phone = Column(String(50), nullable=True)
+    emr = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=True)
 
 class Patient(Base):
@@ -49,4 +49,7 @@ class Patient(Base):
     email = Column(String, nullable=True)
     address = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, server_default=func.now()) 
+    created_at = Column(DateTime, server_default=func.now())
+    collateral_first_name = Column(String(100), nullable=True)
+    collateral_last_name = Column(String(100), nullable=True)
+    collateral_email = Column(String(255), nullable=True) 

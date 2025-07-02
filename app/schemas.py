@@ -9,8 +9,7 @@ class RegisterRequest(BaseModel):
     mobile: Optional[str] = None
     company_name: str
     industry: str
-    company_address: Optional[str] = None
-    company_phone: Optional[str] = None
+    emr: Optional[str] = None
     class Config:
         orm_mode = True
 
@@ -46,13 +45,16 @@ class UserResponse(BaseModel):
     is_active: bool
     mobile_phone: Optional[str] = None
     company: Optional[Any] = None
+    user_type: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     mobile_phone: Optional[str] = None
+    user_type: Optional[str] = None
+    is_active: Optional[bool] = None
     # Add more fields as needed
 
 class CompanyCreate(BaseModel):
@@ -64,8 +66,7 @@ class CompanyResponse(BaseModel):
     id: int
     name: str
     industry: str | None = None
-    company_address: str | None = None
-    company_phone: str | None = None
+    emr: str | None = None
     created_at: Optional[datetime] = None
     class Config:
         orm_mode = True
@@ -73,8 +74,7 @@ class CompanyResponse(BaseModel):
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
-    company_address: Optional[str] = None
-    company_phone: Optional[str] = None
+    emr: Optional[str] = None
     industry: Optional[str] = None
     # Add more fields as needed
 
@@ -83,8 +83,11 @@ class PatientCreate(BaseModel):
     last_name: str
     date_of_birth: date
     phone: Optional[str] = None
-    email: str
-    address: str
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    collateral_first_name: Optional[str] = None
+    collateral_last_name: Optional[str] = None
+    collateral_email: Optional[EmailStr] = None
 
 class PatientUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -94,6 +97,9 @@ class PatientUpdate(BaseModel):
     email: Optional[EmailStr] = None
     address: Optional[str] = None
     user_id: Optional[int] = None
+    collateral_first_name: Optional[str] = None
+    collateral_last_name: Optional[str] = None
+    collateral_email: Optional[str] = None
 
 class PatientResponse(BaseModel):
     id: int
@@ -105,6 +111,9 @@ class PatientResponse(BaseModel):
     address: Optional[str] = None
     user_id: Optional[int] = None
     created_at: Optional[datetime] = None
+    collateral_first_name: Optional[str] = None
+    collateral_last_name: Optional[str] = None
+    collateral_email: Optional[str] = None
     class Config:
         orm_mode = True
 
