@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..db import SessionLocal, DATABASE_URL
-from ..schemas import UserResponse, CompanyCreate, CompanyResponse
+from ..schemas import UserResponse, CompanyCreate, CompanyResponse, UserUpdate
 from ..crud import get_all_users_with_roles, create_company
 from app.routes.auth import get_current_user_with_role
 from ..models import Company, User, Role
@@ -86,6 +86,39 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db), current_user =
     user_dict = user_response.dict()
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role_obj.name if role_obj else None
+    user_dict['is_active'] = user.is_active
+    user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
+    return user_dict
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: int,
+    update: UserUpdate = Body(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role(["admin", "super_admin"]))
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Only super_admin can update any user; admin can only update users from their own company
+    if getattr(current_user, 'role_id', None) == 1 and user.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Forbidden: Cannot update users from another company.")
+    # Prevent duplicate email only if changed
+    if update.email != user.email:
+        existing = db.query(User).filter(User.email == update.email, User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use.")
+    for key, value in update.dict(exclude_unset=True).items():
+        setattr(user, key, value)
+    db.commit()
+    db.refresh(user)
+    # Enrich user with company_name, role_name, is_active, and company info
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    role = db.query(Role).filter(Role.id == user.role_id).first()
+    user_response = UserResponse.from_orm(user)
+    user_dict = user_response.dict()
+    user_dict['company_name'] = company.name if company else None
+    user_dict['role_name'] = role.name if role else None
     user_dict['is_active'] = user.is_active
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     return user_dict
