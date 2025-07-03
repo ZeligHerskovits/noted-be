@@ -90,7 +90,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     body = """
     <p>Welcome to Noted!</p>
     <p>Your email has been verified and your account is now active.</p>
-    <p>We're excited to have you on board. You can now <a href='https://noted.objectif.solutions/login'>log in</a> and start using the platform.</p>
+    <p>We're excited to have you on board. You can now <a href='https://noteddev.objectif.solutions/login'>log in</a> and start using the platform.</p>
     <p>Best regards,<br>The Noted Team</p>
     """
     send_email_via_msmtp(user.email, subject, body)
