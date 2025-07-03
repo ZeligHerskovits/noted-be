@@ -26,8 +26,7 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
 SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
-FRONTEND_RESET_URL = os.getenv("FRONTEND_RESET_URL", "https://noteddevapi.objectif.solutions/reset-password")
-FRONTEND_VERIFY_URL = os.getenv("FRONTEND_VERIFY_URL", "https://noteddev.objectif.solutions/verify-email")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://noteddev.objectif.solutions")
 ENV = os.getenv("ENV", "production")
 
 def get_db():
@@ -69,7 +68,7 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     # Generate verification token and send email
     token = str(uuid.uuid4())
     set_email_verification_token(db, user, token)
-    verification_link = f"{FRONTEND_VERIFY_URL}?token={token}"
+    verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
     subject = "Verify your Noted account"
     body = f"<p>Thank you for registering. Please verify your email by clicking the button below:</p>"
     body += f'<p><a href="{verification_link}" style="display:inline-block;padding:10px 20px;background-color:#3b82f6;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">Verify Account</a></p>'
@@ -87,10 +86,11 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     db.refresh(user)
     # Send welcome email
     subject = "Welcome to Noted!"
-    body = """
+    login_link = f"{FRONTEND_URL}/login"
+    body = f"""
     <p>Welcome to Noted!</p>
     <p>Your email has been verified and your account is now active.</p>
-    <p>We're excited to have you on board. You can now <a href='https://noteddev.objectif.solutions/login'>log in</a> and start using the platform.</p>
+    <p>We're excited to have you on board. You can now <a href='{login_link}'>log in</a> and start using the platform.</p>
     <p>Best regards,<br>The Noted Team</p>
     """
     send_email_via_msmtp(user.email, subject, body)
@@ -153,7 +153,7 @@ def send_otp_email(to_email, otp_code):
 
 def send_reset_link(to_email, token):
     subject = "Noted: Password Reset Request"
-    reset_url = f"https://noteddev.objectif.solutions/reset-password?email={to_email}&token={token}"
+    reset_url = f"{FRONTEND_URL}/reset-password?email={to_email}&token={token}"
     unsubscribe_url = "http://tracking.objectif.solutions/tracking/unsubscribe?d=u2VKjc2xLLiY-svH9kVVC_wRXAgzpNBv5TIQltowX5aWunCMyu6IPTJpkOOPW9SP3zWvuyn0oO4UJbL4Iwqo42RVWLBciy6OT9ehUkA5UwmV0"
     body = f"""
 <html>
@@ -375,7 +375,7 @@ def resend_verification(request: dict = Body(...), db: Session = Depends(get_db)
     import uuid
     token = str(uuid.uuid4())
     set_email_verification_token(db, user, token)
-    verification_link = f"{FRONTEND_VERIFY_URL}?token={token}"
+    verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
     subject = "Verify your Noted account"
     body = f"<p>Thank you for registering. Please verify your email by clicking the button below:</p>"
     body += f'<p><a href="{verification_link}" style="display:inline-block;padding:10px 20px;background-color:#3b82f6;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">Verify Account</a></p>'

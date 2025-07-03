@@ -19,11 +19,13 @@ app = FastAPI(
 )
 
 # CORS middleware
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://noteddev.objectif.solutions")
+
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=[
+    allow_origins=[
         "http://localhost:3000",
-        "https://noteddev.objectif.solutions"
+         FRONTEND_URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
