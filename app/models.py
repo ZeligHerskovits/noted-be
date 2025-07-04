@@ -38,6 +38,7 @@ class Company(Base):
     industry = Column(String(100), nullable=True)
     emr = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
 
 class Patient(Base):
     __tablename__ = "patients"

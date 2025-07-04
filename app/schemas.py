@@ -61,6 +61,7 @@ class CompanyCreate(BaseModel):
     name: str
     industry: str | None = None
     address: str | None = None
+    is_active: bool = True
 
 class CompanyResponse(BaseModel):
     id: int
@@ -68,6 +69,7 @@ class CompanyResponse(BaseModel):
     industry: str | None = None
     emr: str | None = None
     created_at: Optional[datetime] = None
+    is_active: bool
     class Config:
         orm_mode = True
         from_attributes = True
@@ -76,6 +78,7 @@ class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     emr: Optional[str] = None
     industry: Optional[str] = None
+    is_active: Optional[bool] = None
     # Add more fields as needed
 
 class PatientCreate(BaseModel):

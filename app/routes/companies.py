@@ -29,7 +29,14 @@ def update_company(company_id: int, update: CompanyUpdate, db: Session = Depends
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    for key, value in update.dict(exclude_unset=True).items():
+    update_data = update.dict(exclude_unset=True)
+    # Only superadmin (role_id == 3) can update is_active
+    if 'is_active' in update_data and getattr(current_user, 'role_id', None) != 3:
+        raise HTTPException(status_code=403, detail="Only superadmins can change the is_active field.")
+    # If company is being deactivated, deactivate all its users
+    if 'is_active' in update_data and update_data['is_active'] is False:
+        db.query(User).filter(User.company_id == company_id).update({User.is_active: False})
+    for key, value in update_data.items():
         setattr(company, key, value)
     db.commit()
     db.refresh(company)
