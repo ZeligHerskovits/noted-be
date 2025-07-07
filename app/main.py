@@ -3,6 +3,10 @@ import os
 load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import logging
+import traceback
 from .routes import auth, users, patients
 from .routes import companies
 from .models import Base
@@ -71,6 +75,15 @@ def test_endpoint():
             "environment": "development"
         }
     }
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Unhandled error for request {request.url}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"}
+    )
 
 if __name__ == "__main__":
     import uvicorn
