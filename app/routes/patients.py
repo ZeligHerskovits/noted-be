@@ -7,6 +7,7 @@ from app.schemas import PatientCreate, PatientUpdate, PatientResponse
 import logging
 from app.routes.auth import get_current_user_with_role
 from datetime import date
+from uuid import UUID
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -56,7 +57,7 @@ def create_patient(
         raise HTTPException(status_code=500, detail="Failed to create patient")
 
 @router.put("/{patient_id}", response_model=PatientResponse)
-def update_patient(patient_id: int, patient: PatientUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
+def update_patient(patient_id: UUID, patient: PatientUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
     print(f"PUT /api/patients/{patient_id} called with: {patient}")
     try:
         db_patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == current_user.id).first()
@@ -72,7 +73,7 @@ def update_patient(patient_id: int, patient: PatientUpdate, db: Session = Depend
         raise HTTPException(status_code=500, detail="Failed to update patient")
 
 @router.delete("/{patient_id}", response_model=dict)
-def delete_patient(patient_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
+def delete_patient(patient_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
     print(f"DELETE /api/patients/{patient_id} called")
     try:
         db_patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == current_user.id).first()

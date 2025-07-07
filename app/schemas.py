@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
 from typing import Optional, Any
+from uuid import UUID
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -35,7 +36,7 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 class UserResponse(BaseModel):
-    id: int
+    id: UUID
     email: EmailStr
     full_name: str
     role_id: int
@@ -64,7 +65,7 @@ class CompanyCreate(BaseModel):
     is_active: bool = True
 
 class CompanyResponse(BaseModel):
-    id: int
+    id: UUID
     name: str
     industry: str | None = None
     emr: str | None = None
@@ -99,20 +100,20 @@ class PatientUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     address: Optional[str] = None
-    user_id: Optional[int] = None
+    user_id: Optional[UUID] = None
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[str] = None
 
 class PatientResponse(BaseModel):
-    id: int
+    id: UUID
     first_name: str
     last_name: str
     date_of_birth: date
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     address: Optional[str] = None
-    user_id: Optional[int] = None
+    user_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None

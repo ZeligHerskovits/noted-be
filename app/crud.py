@@ -7,6 +7,7 @@ from sqlalchemy import and_
 import random
 import secrets
 import os
+from uuid import UUID
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -19,7 +20,7 @@ def get_password_hash(password: str) -> str:
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
-def create_user(db: Session, email: str, password: str, full_name: str, company_id: int, mobile_phone: str = None, user_type: str = None):
+def create_user(db: Session, email: str, password: str, full_name: str, company_id: UUID, mobile_phone: str = None, user_type: str = None):
     hashed_password = get_password_hash(password)
     user = User(email=email, hashed_password=hashed_password, full_name=full_name, role_id=1, company_id=company_id, mobile_phone=mobile_phone, is_active=False, user_type=user_type)
     db.add(user)
@@ -39,7 +40,7 @@ def create_access_token(data: dict, expires_delta: int = 60*24, role: str = None
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_user_otp(db: Session, user_id: int, otp_code: str):
+def get_user_otp(db: Session, user_id: UUID, otp_code: str):
     return db.query(Otp).filter(
         and_(
             Otp.user_id == user_id,

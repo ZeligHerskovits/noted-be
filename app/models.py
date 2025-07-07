@@ -2,15 +2,17 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, J
 from sqlalchemy.sql import func
 from sqlalchemy.ext.mutable import MutableList
 from .db import Base
+import uuid
+from sqlalchemy.dialects.postgresql import UUID
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     trusted_devices = Column(MutableList.as_mutable(JSON), default=list)  # List of trusted device IDs
     is_email_verified = Column(Boolean, default=False, nullable=False)
     email_verification_token = Column(String, nullable=True)
@@ -33,7 +35,7 @@ class Role(Base):
 
 class Company(Base):
     __tablename__ = "companies"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
     emr = Column(String(50), nullable=True)
@@ -42,14 +44,14 @@ class Company(Base):
 
 class Patient(Base):
     __tablename__ = "patients"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     date_of_birth = Column(Date, nullable=False)
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     address = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     collateral_first_name = Column(String(100), nullable=True)
     collateral_last_name = Column(String(100), nullable=True)

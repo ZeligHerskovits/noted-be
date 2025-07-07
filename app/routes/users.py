@@ -6,6 +6,7 @@ from ..schemas import UserResponse, CompanyCreate, CompanyResponse, UserUpdate
 from ..crud import get_all_users_with_roles, create_company
 from app.routes.auth import get_current_user_with_role
 from ..models import Company, User, Role
+from uuid import UUID
 
 router = APIRouter()
 
@@ -62,7 +63,7 @@ def db_health_check():
         }
 
 @router.delete("/users/{user_id}", response_model=dict)
-def delete_user(user_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin"]))):
+def delete_user(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin"]))):
     user_to_delete = db.query(User).filter(User.id == user_id).first()
     if not user_to_delete:
         raise HTTPException(status_code=404, detail="User not found")
@@ -71,7 +72,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user = Depe
     return {"detail": "User deleted"}
 
 @router.get("/users/{user_id}", response_model=UserResponse)
-def get_user_profile(user_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))):
+def get_user_profile(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -92,7 +93,7 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db), current_user =
 
 @router.put("/users/{user_id}", response_model=UserResponse)
 def update_user(
-    user_id: int,
+    user_id: UUID,
     update: UserUpdate = Body(...),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["admin", "super_admin"]))

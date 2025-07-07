@@ -4,6 +4,7 @@ from ..db import SessionLocal
 from ..models import Company, User, Role
 from ..schemas import CompanyResponse, CompanyCreate, CompanyUpdate
 from app.routes.auth import get_current_user_with_role
+from uuid import UUID
 
 router = APIRouter()
 
@@ -25,7 +26,7 @@ def list_companies(
     return companies
 
 @router.put("/company/{company_id}", response_model=CompanyResponse)
-def update_company(company_id: int, update: CompanyUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["admin", "super_admin", "user", "standard"]))):
+def update_company(company_id: UUID, update: CompanyUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["admin", "super_admin", "user", "standard"]))):
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -43,7 +44,7 @@ def update_company(company_id: int, update: CompanyUpdate, db: Session = Depends
     return company
 
 @router.get("/companies/{company_id}")
-def get_company_with_users(company_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin"]))):
+def get_company_with_users(company_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin"]))):
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
