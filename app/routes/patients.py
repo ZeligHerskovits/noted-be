@@ -8,6 +8,7 @@ import logging
 from app.routes.auth import get_current_user_with_role
 from datetime import date
 from uuid import UUID
+import traceback
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -34,6 +35,7 @@ def list_patients(
         return patients
     except Exception as e:
         logger.error(f"Error fetching patients: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch patients")
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
@@ -54,6 +56,7 @@ def create_patient(
         return new_patient
     except Exception as e:
         logger.error(f"Error creating patient: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to create patient")
 
 @router.put("/{patient_id}", response_model=PatientResponse)
@@ -70,6 +73,7 @@ def update_patient(patient_id: UUID, patient: PatientUpdate, db: Session = Depen
         return db_patient
     except Exception as e:
         logger.error(f"Error updating patient: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to update patient")
 
 @router.delete("/{patient_id}", response_model=dict)
@@ -84,4 +88,5 @@ def delete_patient(patient_id: UUID, db: Session = Depends(get_db), current_user
         return {"detail": "Patient deleted"}
     except Exception as e:
         logger.error(f"Error deleting patient: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to delete patient") 
