@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company
+from .models import User, Otp, Role, Company, EmrType
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -8,6 +8,7 @@ import random
 import secrets
 import os
 from uuid import UUID
+from typing import List, Optional
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -113,3 +114,55 @@ def verify_email_token(db: Session, token: str):
         db.commit()
         db.refresh(user)
     return user 
+
+# EMR Type CRUD operations
+def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
+                   documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None, instructions: Optional[str] = None):
+    emr_type = EmrType(
+        name=name,
+        session_type=session_type,
+        documentation_methods=documentation_methods,
+        files=files,
+        instructions=instructions
+    )
+    db.add(emr_type)
+    db.commit()
+    db.refresh(emr_type)
+    return emr_type
+
+def get_emr_type(db: Session, emr_type_id: UUID):
+    return db.query(EmrType).filter(EmrType.id == emr_type_id).first()
+
+def get_all_emr_types(db: Session):
+    return db.query(EmrType).all()
+
+def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
+                   session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
+                   files: Optional[List[dict]] = None, instructions: Optional[str] = None):
+    emr_type = get_emr_type(db, emr_type_id)
+    if not emr_type:
+        return None
+
+    if name is not None:
+        emr_type.name = name
+    if session_type is not None:
+        emr_type.session_type = session_type
+    if documentation_methods is not None:
+        emr_type.documentation_methods = documentation_methods
+    if files is not None:
+        emr_type.files = files
+    if instructions is not None:
+        emr_type.instructions = instructions
+
+    db.commit()
+    db.refresh(emr_type)
+    return emr_type
+
+def delete_emr_type(db: Session, emr_type_id: UUID):
+    emr_type = get_emr_type(db, emr_type_id)
+    if not emr_type:
+        return False
+
+    db.delete(emr_type)
+    db.commit()
+    return True 

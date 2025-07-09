@@ -3,7 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.ext.mutable import MutableList
 from .db import Base
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 class User(Base):
     __tablename__ = "users"
@@ -56,3 +56,14 @@ class Patient(Base):
     collateral_first_name = Column(String(100), nullable=True)
     collateral_last_name = Column(String(100), nullable=True)
     collateral_email = Column(String(255), nullable=True) 
+
+class EmrType(Base):
+    __tablename__ = "emr_type"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    name = Column(String(255), nullable=False)
+    session_type = Column(String, nullable=True)
+    documentation_methods = Column(String, nullable=True)
+    files = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    instructions = Column(String, nullable=True) 

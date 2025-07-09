@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from uuid import UUID
 
 class RegisterRequest(BaseModel):
@@ -123,3 +123,38 @@ class PatientResponse(BaseModel):
 
 class EmailVerificationRequest(BaseModel):
     token: str 
+
+class EmrTypeFile(BaseModel):
+    name: str
+    content: str  # base64 encoded content
+    type: str
+    size: int
+    client_name: Optional[str] = None
+    date: Optional[str] = None
+    version: Optional[str] = None
+
+class EmrTypeCreate(BaseModel):
+    name: str
+    session_type: Optional[str] = None
+    documentation_methods: Optional[str] = None
+    files: Optional[List[EmrTypeFile]] = None
+
+class EmrTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    session_type: Optional[str] = None
+    documentation_methods: Optional[str] = None
+    files: Optional[List[EmrTypeFile]] = None
+    instructions: Optional[str] = None
+
+class EmrTypeResponse(BaseModel):
+    id: UUID
+    name: str
+    session_type: Optional[str] = None
+    documentation_methods: Optional[str] = None
+    files: Optional[List[Dict[str, Any]]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    instructions: Optional[str] = None
+    
+    class Config:
+        from_attributes = True 

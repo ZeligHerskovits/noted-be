@@ -1,6 +1,7 @@
-from dotenv import load_dotenv
 import os
-load_dotenv()
+import certifi
+os.environ['SSL_CERT_FILE'] = certifi.where()
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
@@ -9,6 +10,8 @@ import logging
 import traceback
 from .routes import auth, users, patients
 from .routes import companies
+from .routes import emr_types
+from .routes import ai
 from .models import Base
 from .db import engine
 
@@ -41,6 +44,8 @@ app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(patients.router, prefix="/api/v1", tags=["Patients"])
 app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
+app.include_router(emr_types.router, prefix="/api/v1", tags=["EMR Types"])
+app.include_router(ai.router, prefix="/api/v1", tags=["AI"])
 
 # Root endpoint to test if the API is running
 @app.get("/")

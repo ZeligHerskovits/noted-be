@@ -8,5 +8,12 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 # REMINDER: You must create the 'trusted_devices' table in your database for OTP login to work.
 # Use Alembic or a manual SQL migration, since auto-creation is not enabled. 
