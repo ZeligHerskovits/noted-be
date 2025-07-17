@@ -117,13 +117,15 @@ def verify_email_token(db: Session, token: str):
 
 # EMR Type CRUD operations
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
-                   documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None, instructions: Optional[str] = None):
+                   documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None, 
+                   instructions: Optional[str] = None, response: Optional[str] = None):
     emr_type = EmrType(
         name=name,
         session_type=session_type,
         documentation_methods=documentation_methods,
         files=files,
-        instructions=instructions
+        instructions=instructions,
+        response=response
     )
     db.add(emr_type)
     db.commit()
@@ -138,7 +140,8 @@ def get_all_emr_types(db: Session):
 
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
-                   files: Optional[List[dict]] = None, instructions: Optional[str] = None):
+                   files: Optional[List[dict]] = None, instructions: Optional[str] = None,
+                   response: Optional[str] = None):
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
         return None
@@ -153,6 +156,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.files = files
     if instructions is not None:
         emr_type.instructions = instructions
+    if response is not None:
+        emr_type.response = response
 
     db.commit()
     db.refresh(emr_type)

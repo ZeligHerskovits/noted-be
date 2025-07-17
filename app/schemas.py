@@ -145,6 +145,7 @@ class EmrTypeUpdate(BaseModel):
     documentation_methods: Optional[str] = None
     files: Optional[List[EmrTypeFile]] = None
     instructions: Optional[str] = None
+    response: Optional[str] = None
 
 class EmrTypeResponse(BaseModel):
     id: UUID
@@ -155,6 +156,7 @@ class EmrTypeResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     instructions: Optional[str] = None
+    response: Optional[str] = None
     
     class Config:
         from_attributes = True 

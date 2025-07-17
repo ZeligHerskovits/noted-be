@@ -66,4 +66,5 @@ class EmrType(Base):
     files = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    instructions = Column(String, nullable=True) 
+    instructions = Column(String, nullable=True)
+    response = Column(String, nullable=True) 

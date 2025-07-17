@@ -63,9 +63,17 @@ def create_patient(
 def update_patient(patient_id: UUID, patient: PatientUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
     print(f"PUT /api/patients/{patient_id} called with: {patient}")
     try:
-        db_patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == current_user.id).first()
+        # First try to find patient by ID only
+        db_patient = db.query(Patient).filter(Patient.id == patient_id).first()
         if not db_patient:
             raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Check if user has permission to update this patient
+        if current_user.role_id != 3:  # Not super_admin
+            if db_patient.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to update this patient")
+        
+        # Update the patient
         for key, value in patient.dict(exclude_unset=True).items():
             setattr(db_patient, key, value)
         db.commit()

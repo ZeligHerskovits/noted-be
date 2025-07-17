@@ -7,6 +7,7 @@ import json
 import boto3
 import os
 import certifi
+import mimetypes
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from ..db import get_db
@@ -22,13 +23,17 @@ s3 = boto3.client(
     "s3",
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.getenv("AWS_REGION")
+    region_name=os.getenv("AWS_REGION"),
+    verify=False
 )
 S3_BUCKET = os.getenv("S3_BUCKET_NAME")
 
-def upload_file_to_s3(file_content, filename):
-    s3.put_object(Bucket=S3_BUCKET, Key=filename, Body=file_content)
-    url = f"https://{S3_BUCKET}.s3.amazonaws.com/{filename}"
+def upload_file_to_s3(file_content, filename, content_type=None):
+    if not content_type:
+        content_type, _ = mimetypes.guess_type(filename)
+    s3.put_object(Bucket=S3_BUCKET, Key=filename, Body=file_content, ContentType=content_type or 'application/octet-stream')
+    region = os.getenv("AWS_REGION")
+    url = f"https://{S3_BUCKET}.s3.{region}.amazonaws.com/{filename}"
     return url
 
 def generate_presigned_url(bucket, key, expiration=300):
@@ -67,11 +72,12 @@ async def create_emr_type_with_files(
     if files:
         for file in files:
             file_content = await file.read()
-            file_url = upload_file_to_s3(file_content, file.filename)
+            content_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+            file_url = upload_file_to_s3(file_content, file.filename, content_type)
             files_data.append({
                 "name": file.filename,
                 "url": file_url,
-                "type": file.content_type,
+                "type": content_type,
                 "size": len(file_content)
             })
     emr_type = create_emr_type(
@@ -120,9 +126,14 @@ async def update_emr_type_with_files(
     documentation_methods: Optional[str] = Form(None),
     files: Optional[List[UploadFile]] = File(None),
     instructions: Optional[str] = Form(None),
+    clear_files: Optional[bool] = Form(False),
     db: Session = Depends(get_db)
 ):
-    # Build update data only with provided fields
+    # Get existing EMR type to preserve files if not updating them
+    existing_emr_type = get_emr_type(db, emr_type_id)
+    if not existing_emr_type:
+        raise HTTPException(status_code=404, detail="EMR type not found")
+    
     update_data = {}
     if name is not None:
         update_data['name'] = name
@@ -132,18 +143,28 @@ async def update_emr_type_with_files(
         update_data['documentation_methods'] = documentation_methods
     if instructions is not None:
         update_data['instructions'] = instructions
+
+    # Handle files: clear existing files if requested, then upload new files if provided
+    if clear_files:
+        # Clear existing files first
+        update_data['files'] = []
+    
+    # If new files are provided, upload them (this will replace any existing files)
     if files is not None:
         files_data = []
         for file in files:
             file_content = await file.read()
-            file_url = upload_file_to_s3(file_content, file.filename)
+            content_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+            file_url = upload_file_to_s3(file_content, file.filename, content_type)
             files_data.append({
                 "name": file.filename,
                 "url": file_url,
-                "type": file.content_type,
+                "type": content_type,
                 "size": len(file_content)
             })
         update_data['files'] = files_data
+    # If files is None and clear_files is False, don't update the files field - keep existing files
+
     updated_emr_type = update_emr_type(
         db=db,
         emr_type_id=emr_type_id,
@@ -151,7 +172,6 @@ async def update_emr_type_with_files(
     )
     if not updated_emr_type:
         raise HTTPException(status_code=404, detail="EMR type not found")
-    # Patch: update file URLs to signed URLs
     if hasattr(updated_emr_type, 'files'):
         updated_emr_type.files = with_signed_urls(updated_emr_type.files)
     return updated_emr_type
@@ -188,11 +208,12 @@ def upload_files_to_emr_type(
         # Process uploaded files
         for file in files:
             file_content = file.file.read()
-            file_url = upload_file_to_s3(file_content, file.filename)
+            content_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+            file_url = upload_file_to_s3(file_content, file.filename, content_type)
             file_data = {
                 "name": file.filename,
                 "url": file_url,
-                "type": file.content_type,
+                "type": content_type,
                 "size": len(file_content)
             }
             existing_files.append(file_data)
