@@ -14,6 +14,7 @@ from .routes import emr_types
 from .routes import ai
 from .models import Base
 from .db import engine
+load_dotenv()
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
