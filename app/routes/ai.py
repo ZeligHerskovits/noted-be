@@ -830,35 +830,6 @@ Please analyze the form data and provide a clear, accurate answer. If the inform
     
     return gpt_response
 
-@router.post("/analyze-html/")
-async def analyze_html(
-    instructions: str = Form(...),
-    file: UploadFile = File(...)
-):
-    file_content = await file.read()
-    file_type = file.content_type or mimetypes.guess_type(file.filename)[0]
-    
-    if (file_type and file_type.startswith("text")) or file_type in [
-        "application/json", "application/xml", "application/javascript", "application/xhtml+xml", "application/x-www-form-urlencoded", "application/csv"]:
-        text = file_content.decode('utf-8', errors='ignore')
-    else:
-        raise HTTPException(status_code=400, detail=f"Cannot process non-text file type: {file_type or 'unknown'}")
-    
-    # If it's HTML, use the full EMR parser
-    if file_type == "text/html":
-        text = extract_full_emr_text(text)
-    
-    prompt = f"{instructions}\n\nFile content:\n{text}"
-    response = openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant. The user will provide a file and instructions. Follow the instructions using the file content."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    answer = response.choices[0].message.content
-    return {"result": answer}
-
 @router.post("/analyze-emr-file/")
 def analyze_emr_file_for_ai(
     req: GenerateRequest,
@@ -931,27 +902,57 @@ def save_response(
     
     return {"message": "Response saved successfully", "emr_type_id": emr_type_id}
 
-@router.post("/analyze-emr/")
-async def analyze_emr(
-    file: UploadFile = File(...),
-    question: str = Form(...)
-):
-    """Analyze EMR file with a specific question"""
-    file_content = await file.read()
-    file_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+# @router.post("/analyze-emr/")
+# async def analyze_emr(
+#     file: UploadFile = File(...),
+#     question: str = Form(...)
+# ):
+#     """Analyze EMR file with a specific question"""
+#     file_content = await file.read()
+#     file_type = file.content_type or mimetypes.guess_type(file.filename)[0]
     
-    if file_type == "text/html":
-        clean_text = extract_full_emr_text(file_content.decode('utf-8', errors='ignore'))
-    elif (file_type and file_type.startswith("text")) or file_type in [
-        "application/json", "application/xml", "application/javascript", "application/xhtml+xml", "application/x-www-form-urlencoded", "application/csv"]:
-        clean_text = file_content.decode('utf-8', errors='ignore')
-    else:
-        raise HTTPException(status_code=400, detail=f"Cannot process non-text file type: {file_type or 'unknown'}")
+#     if file_type == "text/html":
+#         clean_text = extract_full_emr_text(file_content.decode('utf-8', errors='ignore'))
+#     elif (file_type and file_type.startswith("text")) or file_type in [
+#         "application/json", "application/xml", "application/javascript", "application/xhtml+xml", "application/x-www-form-urlencoded", "application/csv"]:
+#         clean_text = file_content.decode('utf-8', errors='ignore')
+#     else:
+#         raise HTTPException(status_code=400, detail=f"Cannot process non-text file type: {file_type or 'unknown'}")
     
-    # Limit text length
-    MAX_CHARS = 50000
-    if len(clean_text) > MAX_CHARS:
-        clean_text = clean_text[:MAX_CHARS]
+#     # Limit text length
+#     MAX_CHARS = 50000
+#     if len(clean_text) > MAX_CHARS:
+#         clean_text = clean_text[:MAX_CHARS]
     
-    answer = ask_gpt_about_emr(clean_text, question, file_content.decode('utf-8', errors='ignore'))
-    return {"answer": answer} 
+#     answer = ask_gpt_about_emr(clean_text, question, file_content.decode('utf-8', errors='ignore'))
+#     return {"answer": answer} 
+
+
+# @router.post("/analyze-html/")
+# async def analyze_html(
+#     instructions: str = Form(...),
+#     file: UploadFile = File(...)
+# ):
+#     file_content = await file.read()
+#     file_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+    
+#     if (file_type and file_type.startswith("text")) or file_type in [
+#         "application/json", "application/xml", "application/javascript", "application/xhtml+xml", "application/x-www-form-urlencoded", "application/csv"]:
+#         text = file_content.decode('utf-8', errors='ignore')
+#     else:
+#         raise HTTPException(status_code=400, detail=f"Cannot process non-text file type: {file_type or 'unknown'}")
+    
+#     # If it's HTML, use the full EMR parser
+#     if file_type == "text/html":
+#         text = extract_full_emr_text(text)
+    
+#     prompt = f"{instructions}\n\nFile content:\n{text}"
+#     response = openai_client.chat.completions.create(
+#         model="gpt-3.5-turbo",
+#         messages=[
+#             {"role": "system", "content": "You are a helpful assistant. The user will provide a file and instructions. Follow the instructions using the file content."},
+#             {"role": "user", "content": prompt}
+#         ]
+#     )
+#     answer = response.choices[0].message.content
+#     return {"result": answer}
