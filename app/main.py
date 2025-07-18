@@ -8,13 +8,35 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 import logging
 import traceback
+from pathlib import Path
 from .routes import auth, users, patients
 from .routes import companies
 from .routes import emr_types
 from .routes import ai
 from .models import Base
 from .db import engine
-load_dotenv()
+
+# Load .env from the project root (same directory as main.py's parent)
+load_dotenv(Path(__file__).parent.parent / ".env")
+
+# Debug: Check if environment variables are loaded
+print("=== DEBUG: Environment Variables ===")
+print("DATABASE_URL:", os.getenv("DATABASE_URL")[:50] + "..." if os.getenv("DATABASE_URL") else "NOT SET")
+print("SECRET_KEY:", os.getenv("SECRET_KEY")[:10] + "..." if os.getenv("SECRET_KEY") else "NOT SET")
+print("ALGORITHM:", os.getenv("ALGORITHM"))
+print("SMTP_SERVER:", os.getenv("SMTP_SERVER"))
+print("SMTP_PORT:", os.getenv("SMTP_PORT"))
+print("SMTP_USERNAME:", os.getenv("SMTP_USERNAME"))
+print("SMTP_PASSWORD:", os.getenv("SMTP_PASSWORD")[:10] + "..." if os.getenv("SMTP_PASSWORD") else "NOT SET")
+print("FROM_EMAIL:", os.getenv("FROM_EMAIL"))
+print("FRONTEND_URL:", os.getenv("FRONTEND_URL"))
+print("ENV:", os.getenv("ENV"))
+print("AWS_ACCESS_KEY_ID:", os.getenv("AWS_ACCESS_KEY_ID")[:10] + "..." if os.getenv("AWS_ACCESS_KEY_ID") else "NOT SET")
+print("AWS_SECRET_ACCESS_KEY:", os.getenv("AWS_SECRET_ACCESS_KEY")[:10] + "..." if os.getenv("AWS_SECRET_ACCESS_KEY") else "NOT SET")
+print("AWS_REGION:", os.getenv("AWS_REGION"))
+print("S3_BUCKET_NAME:", os.getenv("S3_BUCKET_NAME"))
+print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY")[:10] + "..." if os.getenv("OPENAI_API_KEY") else "NOT SET")
+print("=== END DEBUG ===")
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
