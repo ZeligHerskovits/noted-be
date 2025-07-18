@@ -1,7 +1,7 @@
 import os
 import certifi
 os.environ['SSL_CERT_FILE'] = certifi.where()
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
@@ -16,8 +16,8 @@ from .routes import ai
 from .models import Base
 from .db import engine
 
-# Load .env from the project root (same directory as main.py's parent)
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Load .env from the project root
+load_dotenv()
 
 # Debug: Check if environment variables are loaded
 print("=== DEBUG: Environment Variables ===")
