@@ -26,14 +26,16 @@ s3 = boto3.client(
     region_name=os.getenv("AWS_REGION"),
     verify=False
 )
-S3_BUCKET = os.getenv("S3_BUCKET_NAME")
-
 def upload_file_to_s3(file_content, filename, content_type=None):
+    s3_bucket = os.getenv("S3_BUCKET_NAME")
+    if not s3_bucket:
+        raise ValueError("S3_BUCKET_NAME environment variable is not set")
+    
     if not content_type:
         content_type, _ = mimetypes.guess_type(filename)
-    s3.put_object(Bucket=S3_BUCKET, Key=filename, Body=file_content, ContentType=content_type or 'application/octet-stream')
+    s3.put_object(Bucket=s3_bucket, Key=filename, Body=file_content, ContentType=content_type or 'application/octet-stream')
     region = os.getenv("AWS_REGION")
-    url = f"https://{S3_BUCKET}.s3.{region}.amazonaws.com/{filename}"
+    url = f"https://{s3_bucket}.s3.{region}.amazonaws.com/{filename}"
     return url
 
 def generate_presigned_url(bucket, key, expiration=300):
@@ -47,14 +49,19 @@ def generate_presigned_url(bucket, key, expiration=300):
 def with_signed_urls(files):
     if not files:
         return []
+    
+    s3_bucket = os.getenv("S3_BUCKET_NAME")
+    if not s3_bucket:
+        return files  # Return original files if S3_BUCKET_NAME is not set
+    
     signed_files = []
     for f in files:
         # Extract the S3 key from the URL stored in DB
         # Assumes URL is in the form https://{bucket}.s3.amazonaws.com/{key}
         url = f.get('url')
-        if url and url.startswith(f"https://{S3_BUCKET}.s3.amazonaws.com/"):
-            key = url[len(f"https://{S3_BUCKET}.s3.amazonaws.com/"):]
-            signed_url = generate_presigned_url(S3_BUCKET, key)
+        if url and url.startswith(f"https://{s3_bucket}.s3.amazonaws.com/"):
+            key = url[len(f"https://{s3_bucket}.s3.amazonaws.com/"):]
+            signed_url = generate_presigned_url(s3_bucket, key)
             f = dict(f)
             f['url'] = signed_url
         signed_files.append(f)
