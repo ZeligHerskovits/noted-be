@@ -816,13 +816,13 @@ Please analyze the form data and provide a clear, accurate answer. If the inform
     print("=== END PROMPT DEBUG ===")
     
     response = openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. You can see all form fields, values, and sections. Answer questions about any part of the form clearly and accurately. If information is not present, say 'not found.'"},
             {"role": "user", "content": prompt}
         ],
         temperature=0,
-        max_tokens=2000
+        max_tokens=4000
     )
     
     gpt_response = response.choices[0].message.content
@@ -873,10 +873,22 @@ def analyze_emr_file_for_ai(
     else:
         raise HTTPException(status_code=400, detail=f"Cannot process non-text file type: {file_type or 'unknown'}")
     
-    # Limit text length
-    MAX_CHARS = 50000
+    # GPT-4o can handle much larger files, so we can process more content
+    # Only truncate if the file is extremely large (over 100,000 characters)
+    MAX_CHARS = 100000  # Much larger limit for GPT-4o
     if len(text) > MAX_CHARS:
-        text = text[:MAX_CHARS]
+        # Truncate intelligently - try to keep complete sentences
+        truncated = text[:MAX_CHARS]
+        last_period = truncated.rfind('.')
+        last_question = truncated.rfind('?')
+        last_exclamation = truncated.rfind('!')
+        
+        # Find the last sentence ending
+        last_sentence = max(last_period, last_question, last_exclamation)
+        if last_sentence > MAX_CHARS * 0.8:  # If we can find a sentence ending in the last 20%
+            text = truncated[:last_sentence + 1]
+        else:
+            text = truncated + "... [truncated]"
     
     # Use the instructions as the question for GPT
     answer = ask_gpt_about_emr(text, emr.instructions, file_content.decode('utf-8', errors='ignore'))
