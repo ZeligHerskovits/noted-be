@@ -8,16 +8,22 @@ import boto3
 import os
 import certifi
 import mimetypes
+from datetime import datetime
+from pydantic import BaseModel
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from ..db import get_db
-from ..schemas import EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile
+from ..schemas import (
+    EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile,
+    EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse
+)
 from ..crud import (
     create_emr_type, get_emr_type, get_all_emr_types, 
     update_emr_type, delete_emr_type
 )
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
+fields_router = APIRouter(prefix="/emr-types-fields", tags=["EMR Type Fields"])
 
 s3 = boto3.client(
     "s3",
@@ -343,4 +349,87 @@ def remove_all_files_from_emr_type(emr_type_id: UUID, db: Session = Depends(get_
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}") 
+        raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}")
+
+# EMR Type Fields CRUD operations
+def create_emr_type_field(db: Session, name: str, type: str):
+    """Create a new EMR type field"""
+    from ..models import EMRTypeField
+    db_field = EMRTypeField(name=name, type=type)
+    db.add(db_field)
+    db.commit()
+    db.refresh(db_field)
+    return db_field
+
+def get_emr_type_field(db: Session, field_id: int):
+    """Get EMR type field by ID"""
+    from ..models import EMRTypeField
+    return db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
+
+def get_all_emr_type_fields(db: Session):
+    """Get all EMR type fields"""
+    from ..models import EMRTypeField
+    return db.query(EMRTypeField).all()
+
+def update_emr_type_field(db: Session, field_id: int, name: Optional[str] = None, type: Optional[str] = None):
+    """Update EMR type field"""
+    from ..models import EMRTypeField
+    db_field = db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
+    if not db_field:
+        return None
+    
+    if name is not None:
+        db_field.name = name
+    if type is not None:
+        db_field.type = type
+    
+    db.commit()
+    db.refresh(db_field)
+    return db_field
+
+def delete_emr_type_field(db: Session, field_id: int):
+    """Delete EMR type field"""
+    from ..models import EMRTypeField
+    db_field = db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
+    if not db_field:
+        return False
+    
+    db.delete(db_field)
+    db.commit()
+    return True
+
+# EMR Type Fields API Endpoints
+@fields_router.post("/", response_model=EMRTypeFieldResponse)
+def create_field(field: EMRTypeFieldCreate, db: Session = Depends(get_db)):
+    """Create a new EMR type field"""
+    db_field = create_emr_type_field(db, name=field.name, type=field.type)
+    return db_field
+
+@fields_router.get("/", response_model=List[EMRTypeFieldResponse])
+def get_fields(db: Session = Depends(get_db)):
+    """Get all EMR type fields"""
+    return get_all_emr_type_fields(db)
+
+@fields_router.get("/{field_id}", response_model=EMRTypeFieldResponse)
+def get_field(field_id: int, db: Session = Depends(get_db)):
+    """Get EMR type field by ID"""
+    db_field = get_emr_type_field(db, field_id)
+    if not db_field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    return db_field
+
+@fields_router.put("/{field_id}", response_model=EMRTypeFieldResponse)
+def update_field(field_id: int, field: EMRTypeFieldUpdate, db: Session = Depends(get_db)):
+    """Update EMR type field"""
+    db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type)
+    if not db_field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    return db_field
+
+@fields_router.delete("/{field_id}")
+def delete_field(field_id: int, db: Session = Depends(get_db)):
+    """Delete EMR type field"""
+    success = delete_emr_type_field(db, field_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Field not found")
+    return {"message": "Field deleted successfully"} 

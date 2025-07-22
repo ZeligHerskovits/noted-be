@@ -160,3 +160,22 @@ class EmrTypeResponse(BaseModel):
     
     class Config:
         from_attributes = True 
+
+# EMR Type Fields Schemas
+class EMRTypeFieldCreate(BaseModel):
+    name: str
+    type: str
+
+class EMRTypeFieldUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+
+class EMRTypeFieldResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True 

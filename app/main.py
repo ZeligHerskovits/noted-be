@@ -68,6 +68,7 @@ app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(patients.router, prefix="/api/v1", tags=["Patients"])
 app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
 app.include_router(emr_types.router, prefix="/api/v1", tags=["EMR Types"])
+app.include_router(emr_types.fields_router, prefix="/api/v1", tags=["EMR Type Fields"])
 app.include_router(ai.router, prefix="/api/v1", tags=["AI"])
 
 # Root endpoint to test if the API is running

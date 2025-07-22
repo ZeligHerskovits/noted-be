@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, Date
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, Date, Text
 from sqlalchemy.sql import func
 from sqlalchemy.ext.mutable import MutableList
 from .db import Base
@@ -68,3 +68,12 @@ class EmrType(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     instructions = Column(String, nullable=True)
     response = Column(String, nullable=True) 
+
+class EMRTypeField(Base):
+    __tablename__ = "emr_type_fields"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    type = Column(String(100), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 
