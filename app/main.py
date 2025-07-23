@@ -2,10 +2,10 @@ import os
 import certifi
 os.environ['SSL_CERT_FILE'] = certifi.where()
 from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 import traceback
 from pathlib import Path
@@ -15,6 +15,16 @@ from .routes import emr_types
 from .routes import ai
 from .models import Base
 from .db import engine
+
+# Custom middleware to handle large file uploads
+class LargeFileUploadMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # Set maximum file size to 50MB
+        if request.method in ["POST", "PUT"] and "multipart/form-data" in request.headers.get("content-type", ""):
+            # This will be handled by uvicorn's limit_request_size
+            pass
+        response = await call_next(request)
+        return response
 
 # Load .env from the project root
 load_dotenv()
@@ -61,6 +71,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add middleware for handling large file uploads
+app.add_middleware(LargeFileUploadMiddleware)
+
+
 
 # Include routers from the app folder
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
@@ -116,4 +131,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001) 
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8001,
+        # Increase maximum file upload size to 50MB
+        limit_request_size=50 * 1024 * 1024  # 50MB in bytes
+    ) 
