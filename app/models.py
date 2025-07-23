@@ -67,13 +67,25 @@ class EmrType(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     instructions = Column(String, nullable=True)
-    response = Column(String, nullable=True) 
+    response = Column(String, nullable=True)
+    status = Column(String(100), nullable=True)
 
 class EMRTypeField(Base):
     __tablename__ = "emr_type_fields"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String(255), nullable=False)
     type = Column(String(100), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class EMRTypeResult(Base):
+    __tablename__ = "emr_type_results"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id"), nullable=False)
+    key = Column(String(255), nullable=False)
+    value = Column(Text, nullable=True)
+    instructions = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 

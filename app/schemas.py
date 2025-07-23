@@ -157,9 +157,10 @@ class EmrTypeResponse(BaseModel):
     updated_at: Optional[datetime] = None
     instructions: Optional[str] = None
     response: Optional[str] = None
+    status: Optional[str] = None
     
     class Config:
-        from_attributes = True 
+        from_attributes = True
 
 # EMR Type Fields Schemas
 class EMRTypeFieldCreate(BaseModel):
@@ -171,11 +172,35 @@ class EMRTypeFieldUpdate(BaseModel):
     type: Optional[str] = None
 
 class EMRTypeFieldResponse(BaseModel):
-    id: int
+    id: UUID
     name: str
     type: str
     created_at: datetime
     updated_at: datetime
-
+    
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+class EMRTypeResultCreate(BaseModel):
+    emr_type_id: UUID
+    key: str
+    value: Optional[str] = None
+
+class EMRTypeResultResponse(BaseModel):
+    key: str
+    value: Optional[str] = None
+    instructions: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class EmrTypeResponseOnly(BaseModel):
+    response: Optional[str] = None
+
+class UpdateResultInstructionsRequest(BaseModel):
+    key: str
+    instructions: str 
+
+class EMRTypeResultInstructionsOnly(BaseModel):
+    key: str
+    instructions: Optional[str] = None 

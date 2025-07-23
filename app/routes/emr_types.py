@@ -15,11 +15,14 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 from ..db import get_db
 from ..schemas import (
     EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile,
-    EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse
+    EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse,
+    EMRTypeResultCreate, EMRTypeResultResponse, EmrTypeResponseOnly,
+    UpdateResultInstructionsRequest, EMRTypeResultInstructionsOnly
 )
 from ..crud import (
     create_emr_type, get_emr_type, get_all_emr_types, 
-    update_emr_type, delete_emr_type
+    update_emr_type, delete_emr_type,
+    create_emr_type_result, get_emr_type_results_by_emr_type, delete_all_emr_type_results_by_emr_type
 )
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
@@ -115,21 +118,70 @@ def get_all_emr_types_endpoint(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching EMR types: {str(e)}")
 
-@router.get("/{emr_type_id}", response_model=EmrTypeResponse)
-def get_emr_type_endpoint(emr_type_id: UUID, db: Session = Depends(get_db)):
+@router.get("/{emr_type_id}")
+def get_emr_type_endpoint(emr_type_id: UUID, response_only: bool = False, db: Session = Depends(get_db)):
     """Get a specific EMR type by ID"""
     try:
         emr_type = get_emr_type(db, emr_type_id)
         if not emr_type:
             raise HTTPException(status_code=404, detail="EMR type not found")
+        
+        # If response_only is requested, return only the response
+        if response_only:
+            return EmrTypeResponseOnly(response=emr_type.response)
+        
         # Patch: update file URLs to signed URLs
         if hasattr(emr_type, 'files'):
             emr_type.files = with_signed_urls(emr_type.files)
-        return emr_type
+        return EmrTypeResponse.from_orm(emr_type)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching EMR type: {str(e)}")
+
+# EMR Type Results - GET endpoint for frontend display
+@router.get("/{emr_type_id}/results")
+def get_emr_type_results(emr_type_id: UUID, instructions_only: bool = False, db: Session = Depends(get_db)):
+    """Get all results for a specific EMR type (for frontend display)"""
+    results = get_emr_type_results_by_emr_type(db, emr_type_id)
+    
+    if instructions_only:
+        # Return only key and instructions
+        return [EMRTypeResultInstructionsOnly(key=result.key, instructions=result.instructions) for result in results]
+    
+    return [EMRTypeResultResponse.from_orm(result) for result in results]
+
+# EMR Type Results - Update instructions endpoint (MUST BE BEFORE GENERAL PUT)
+@router.put("/{emr_type_id}/instructions")
+def update_result_instructions(
+    emr_type_id: UUID,
+    request: UpdateResultInstructionsRequest,
+    db: Session = Depends(get_db)
+):
+    """Update instructions for a specific EMR type result by key"""
+    from ..models import EMRTypeResult
+    
+    # Get the result by emr_type_id and key
+    result = db.query(EMRTypeResult).filter(
+        EMRTypeResult.emr_type_id == emr_type_id,
+        EMRTypeResult.key == request.key
+    ).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+    
+    # Update the instructions
+    result.instructions = request.instructions
+    db.commit()
+    db.refresh(result)
+    
+    # Update EMR type status to 'draft' since instructions were changed
+    update_emr_type(db, emr_type_id, status='draft')
+    print(f"=== DEBUG: Updated EMR type status to 'draft' after instruction change ===")
+    
+    return {
+        "message": "Instructions updated successfully"
+    }
 
 @router.put("/{emr_type_id}", response_model=EmrTypeResponse)
 async def update_emr_type_with_files(
@@ -351,6 +403,36 @@ def remove_all_files_from_emr_type(emr_type_id: UUID, db: Session = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}")
 
+@router.put("/{emr_type_id}/finalize")
+def finalize_emr_type(emr_type_id: UUID, db: Session = Depends(get_db)):
+    """
+    Finalize an EMR type by changing its status to 'active'.
+    Only works if current status is 'Generated'.
+    """
+    # Get the EMR type
+    emr_type = get_emr_type(db, emr_type_id)
+    if not emr_type:
+        raise HTTPException(status_code=404, detail="EMR type not found")
+    
+    # Check if current status is 'generated'
+    if emr_type.status != "generated":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot finalize EMR type. Current status is '{emr_type.status}', but only 'generated' status can be finalized."
+        )
+    
+    # Update status to 'active'
+    updated_emr_type = update_emr_type(
+        db=db,
+        emr_type_id=emr_type_id,
+        status="active"
+    )
+    
+    return {
+        "message": "EMR type finalized successfully",
+        "emr_type": updated_emr_type
+    }
+
 # EMR Type Fields CRUD operations
 def create_emr_type_field(db: Session, name: str, type: str):
     """Create a new EMR type field"""
@@ -361,7 +443,7 @@ def create_emr_type_field(db: Session, name: str, type: str):
     db.refresh(db_field)
     return db_field
 
-def get_emr_type_field(db: Session, field_id: int):
+def get_emr_type_field(db: Session, field_id: UUID):
     """Get EMR type field by ID"""
     from ..models import EMRTypeField
     return db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
@@ -371,7 +453,7 @@ def get_all_emr_type_fields(db: Session):
     from ..models import EMRTypeField
     return db.query(EMRTypeField).all()
 
-def update_emr_type_field(db: Session, field_id: int, name: Optional[str] = None, type: Optional[str] = None):
+def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None):
     """Update EMR type field"""
     from ..models import EMRTypeField
     db_field = db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
@@ -387,7 +469,7 @@ def update_emr_type_field(db: Session, field_id: int, name: Optional[str] = None
     db.refresh(db_field)
     return db_field
 
-def delete_emr_type_field(db: Session, field_id: int):
+def delete_emr_type_field(db: Session, field_id: UUID):
     """Delete EMR type field"""
     from ..models import EMRTypeField
     db_field = db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
@@ -411,7 +493,7 @@ def get_fields(db: Session = Depends(get_db)):
     return get_all_emr_type_fields(db)
 
 @fields_router.get("/{field_id}", response_model=EMRTypeFieldResponse)
-def get_field(field_id: int, db: Session = Depends(get_db)):
+def get_field(field_id: UUID, db: Session = Depends(get_db)):
     """Get EMR type field by ID"""
     db_field = get_emr_type_field(db, field_id)
     if not db_field:
@@ -419,7 +501,7 @@ def get_field(field_id: int, db: Session = Depends(get_db)):
     return db_field
 
 @fields_router.put("/{field_id}", response_model=EMRTypeFieldResponse)
-def update_field(field_id: int, field: EMRTypeFieldUpdate, db: Session = Depends(get_db)):
+def update_field(field_id: UUID, field: EMRTypeFieldUpdate, db: Session = Depends(get_db)):
     """Update EMR type field"""
     db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type)
     if not db_field:
@@ -427,7 +509,7 @@ def update_field(field_id: int, field: EMRTypeFieldUpdate, db: Session = Depends
     return db_field
 
 @fields_router.delete("/{field_id}")
-def delete_field(field_id: int, db: Session = Depends(get_db)):
+def delete_field(field_id: UUID, db: Session = Depends(get_db)):
     """Delete EMR type field"""
     success = delete_emr_type_field(db, field_id)
     if not success:

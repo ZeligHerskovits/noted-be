@@ -4,13 +4,18 @@ import os
 import re
 from sqlalchemy.orm import Session
 from ..db import get_db
-from ..crud import get_emr_type, update_emr_type
+from ..crud import (
+    get_emr_type, update_emr_type, get_all_emr_type_fields,
+    create_emr_type_result, delete_all_emr_type_results_by_emr_type,
+    get_emr_type_results_by_emr_type
+)
 import boto3
 from pydantic import BaseModel
 import urllib.parse
 from dotenv import load_dotenv
 import mimetypes
 from bs4 import BeautifulSoup
+from ..models import EMRTypeResult
 load_dotenv()
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -75,7 +80,7 @@ def truncate_html_for_tokens(html_content: str, max_chars: int = 150000) -> str:
 
     for element in form_elements:
         if element_count >= max_elements:
-            break
+                    break
         new_html += str(element) + "\n"
         element_count += 1
 
@@ -128,7 +133,7 @@ def extract_only_essential_elements(html_content: str, max_chars: int) -> str:
 
     for element in essential_elements:
         if element_count >= max_elements:
-            break
+                        break
         new_html += str(element) + "\n"
         element_count += 1
 
@@ -151,6 +156,11 @@ def analyze_emr_file_for_ai(
     emr = get_emr_type(db, emr_type_id)
     if not emr:
         raise HTTPException(status_code=404, detail="EMR type not found")
+    
+    # Check if EMR type has been analyzed before allowing generate response
+    if emr.status != 'analyzed':
+        raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
+    
     if not emr.files or len(emr.files) == 0:
         raise HTTPException(status_code=404, detail="No file found for this EMR type")
     if not emr.instructions:
@@ -265,6 +275,10 @@ Please provide a clear, accurate response based on the HTML content and instruct
     # Save the response to the database
     update_emr_type(db, emr_type_id, response=answer)
     
+    # Update status to 'generated' after successful response generation
+    update_emr_type(db, emr_type_id, status='generated')
+    print(f"=== DEBUG: Updated EMR type status to 'Generated' after response generation ===")
+    
     return {"result": answer}
 
 @router.post("/save-response/")
@@ -373,6 +387,258 @@ Please provide a clear, accurate response based on the HTML content and instruct
     update_emr_type(db, emr_type_id, response=answer)
     
     return {"result": answer}
+
+@router.post("/analyze-emr-type/{emr_type_id}")
+def analyze_emr_type(
+    emr_type_id: str,
+    db: Session = Depends(get_db)
+):
+    """Analyze EMR type using field definitions and save results"""
+    
+    # Get the EMR type
+    emr = get_emr_type(db, emr_type_id)
+    if not emr:
+        raise HTTPException(status_code=404, detail="EMR type not found")
+    
+    if not emr.files or len(emr.files) == 0:
+        raise HTTPException(status_code=404, detail="No file found for this EMR type")
+    
+    # Get all field names from emr_type_fields
+    fields = get_all_emr_type_fields(db)
+    if not fields:
+        raise HTTPException(status_code=404, detail="No fields defined for EMR type")
+    
+    field_names = [field.name for field in fields]
+    print(f"=== DEBUG: Found {len(field_names)} fields to extract: {field_names} ===")
+    
+    # Get the HTML file from S3
+    file_url = emr.files[0].get('url')
+    if not file_url:
+        raise HTTPException(status_code=400, detail="File URL missing in EMR type")
+    
+    region = os.getenv("AWS_REGION")
+    prefix = f"https://{S3_BUCKET}.s3.{region}.amazonaws.com/"
+    if not file_url.startswith(prefix):
+        raise HTTPException(status_code=400, detail="File URL is not a valid S3 URL")
+    
+    s3_key = urllib.parse.unquote(file_url[len(prefix):])
+    print(f"=== DEBUG: Loading file from S3: {s3_key} ===")
+    s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
+    file_content = s3_response['Body'].read()
+    
+    # Decode the file content
+    raw_html = file_content.decode('utf-8', errors='ignore')
+    
+    # Extract iframe content if present
+    soup = BeautifulSoup(raw_html, 'html.parser')
+    iframes = soup.find_all('iframe')
+    if iframes:
+        print("✅ Found iframe content in HTML")
+        for iframe in iframes:
+            srcdoc = iframe.get('srcdoc')
+            if srcdoc:
+                print(f"=== DEBUG: Found iframe with srcdoc content ===")
+                raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
+    
+    # Use the truncation function
+    html_content_for_gpt = truncate_html_for_tokens(raw_html)
+    
+    # Create dynamic instructions based on field names
+    field_instructions = "\n".join([f"- {field_name}" for field_name in field_names])
+    
+    # Create the prompt with dynamic field instructions
+    prompt = f"""
+Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the following fields:
+
+{field_instructions}
+
+Please extract each field and provide the value found in the HTML. If a field is not found or empty, indicate "Not found" or "Empty".
+
+IMPORTANT: Respond with ONLY the field names and values in this exact format:
+FieldName: Value
+FieldName: Value
+
+Do not include any descriptive text, explanations, or other content.
+
+HTML CONTENT:
+{html_content_for_gpt}
+"""
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and list each field with its value."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=4000
+        )
+        
+        answer = response.choices[0].message.content
+        print(f"=== DEBUG: AI Response: {answer} ===")
+        
+        # Parse the AI response into key-value pairs
+        # Expected format: "Client: John Doe\nDate: 07/12/2025\nDuration: 00:30"
+        lines = answer.strip().split('\n')
+        for line in lines:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                # Check if result already exists to preserve instructions
+                existing_result = db.query(EMRTypeResult).filter(
+                    EMRTypeResult.emr_type_id == emr_type_id,
+                    EMRTypeResult.key == key
+                ).first()
+                
+                if existing_result:
+                    # Update only the value, preserve existing instructions
+                    existing_result.value = value
+                    db.commit()
+                    print(f"=== DEBUG: Updated {key}: {value} (preserved instructions) ===")
+                else:
+                    # Create new result with empty instructions
+                    create_emr_type_result(
+                        db=db,
+                        emr_type_id=emr_type_id,
+                        key=key,
+                        value=value
+                    )
+                    print(f"=== DEBUG: Created {key}: {value} ===")
+        
+        # Generate JSON instructions from the results
+        results = get_emr_type_results_by_emr_type(db, emr_type_id)
+        json_instructions = generate_json_instructions_from_results(results)
+        
+        # Save the generated JSON instructions to the EMR type
+        update_emr_type(db, emr_type_id, instructions=json_instructions)
+        print(f"=== DEBUG: Saved generated JSON instructions to EMR type ===")
+        
+        # Update status to 'analyzed' after successful analysis
+        update_emr_type(db, emr_type_id, status='analyzed')
+        print(f"=== DEBUG: Updated EMR type status to 'Analyzed' ===")
+        
+        return {"message": "Analysis completed successfully"}
+        
+    except Exception as e:
+        print(f"ERROR: Analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
+def generate_json_instructions_from_results(results):
+    """Generate JSON instructions from analysis results"""
+    
+    # Start with the header
+    json_instructions = """JSON OUTPUT INSTRUCTION
+return a single JSON object in the following format:
+
+"""
+    
+    # Generate the JSON structure for each result
+    json_instructions += "{\n"
+    
+    for i, result in enumerate(results):
+        # Check if field has specific instructions
+        if result.instructions and result.instructions.strip():
+            # Field HAS instructions - generate specific JSON based on instructions
+            selector, attribute = parse_instructions_to_selector(result.instructions)
+            
+            json_instructions += f'  "{result.key}": {{\n'
+            json_instructions += f'    "value": "put the extracted value here",\n'
+            json_instructions += f'    "source": {{\n'
+            json_instructions += f'      "selector": "{selector}",\n'
+            json_instructions += f'      "attribute": "{attribute}"\n'
+            json_instructions += f'    }}\n'
+            json_instructions += f'  }}{"," if i < len(results) - 1 else ""}\n'
+        else:
+            # Field has NO instructions - use current generic template
+            template_selector = f"exact CSS selector path (e.g. {result.key.lower()}-selector)"
+            
+            json_instructions += f'  "{result.key}": {{\n'
+            json_instructions += f'    "value": "put the extracted value here",\n'
+            json_instructions += f'    "source": {{\n'
+            json_instructions += f'      "selector": "{template_selector}",\n'
+            json_instructions += f'      "attribute": "attribute you used (title, value, textContent, checked)"\n'
+            json_instructions += f'    }}\n'
+            json_instructions += f'  }}{"," if i < len(results) - 1 else ""}\n'
+    
+    json_instructions += """}
+
+IMPORTANT RULES:
+1. The "selector" should ONLY contain the CSS selector path - DO NOT include the actual values in the selector
+2. The "attribute" should specify which attribute you used to extract the value (title, value, textContent, checked)
+3. Look for the EXACT selectors in the HTML you receive. Don't use generic selectors - use the specific IDs, classes, and attributes you actually see in the HTML.
+4. The selector should be reusable - someone should be able to use that same selector to find the element again.
+
+You must output JSON for all fields. Always display in source the selector and attribute even if value is "empty" or "false"."""
+    
+    return json_instructions
+
+def parse_instructions_to_selector(instructions):
+    """Parse instructions to generate specific CSS selector and attribute"""
+    instructions_lower = instructions.lower()
+    
+    # Default values
+    selector = "exact CSS selector path"
+    attribute = "attribute you used (title, value, textContent, checked)"
+    
+    # Parse for element types
+    if "<a>" in instructions_lower or "a element" in instructions_lower:
+        selector = "a"
+    elif "<input>" in instructions_lower or "input element" in instructions_lower:
+        selector = "input"
+    elif "<div>" in instructions_lower or "div element" in instructions_lower:
+        selector = "div"
+    elif "<span>" in instructions_lower or "span element" in instructions_lower:
+        selector = "span"
+    elif "<label>" in instructions_lower or "label element" in instructions_lower:
+        selector = "label"
+    
+    # Parse for classes
+    if "class containing" in instructions_lower:
+        # Extract class names from instructions
+        import re
+        class_matches = re.findall(r'class.*?["\']([^"\']+)["\']', instructions, re.IGNORECASE)
+        if class_matches:
+            classes = class_matches[0].split()
+            selector += "." + ".".join(classes)
+        else:
+            # Look for class names mentioned
+            class_keywords = ["formset-link-format", "lut-description", "client-name", "date-input", "time-input"]
+            found_classes = []
+            for keyword in class_keywords:
+                if keyword in instructions_lower:
+                    found_classes.append(keyword)
+            if found_classes:
+                selector += "." + ".".join(found_classes)
+    
+    # Parse for IDs
+    if "id containing" in instructions_lower:
+        # Extract ID patterns from instructions
+        import re
+        id_matches = re.findall(r'id.*?["\']([^"\']+)["\']', instructions, re.IGNORECASE)
+        if id_matches:
+            selector = f"#{id_matches[0]}"
+        else:
+            # Look for ID patterns mentioned
+            if "input-date" in instructions_lower and "input-time" in instructions_lower:
+                selector = "input[id*='input-date'], input[id*='input-time']"
+            elif "input-date" in instructions_lower:
+                selector = "input[id*='input-date']"
+            elif "input-time" in instructions_lower:
+                selector = "input[id*='input-time']"
+    
+    # Parse for attributes
+    if "title attribute" in instructions_lower or "title" in instructions_lower:
+        attribute = "title"
+    elif "value attribute" in instructions_lower or "value" in instructions_lower:
+        attribute = "value"
+    elif "textcontent" in instructions_lower or "text content" in instructions_lower:
+        attribute = "textContent"
+    elif "checked" in instructions_lower:
+        attribute = "checked"
+    
+    return selector, attribute
 
 # @router.post("/analyze-emr/")
 # async def analyze_emr(

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company, EmrType
+from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -113,11 +113,11 @@ def verify_email_token(db: Session, token: str):
         user.email_verification_token = None
         db.commit()
         db.refresh(user)
-    return user 
+    return user
 
 # EMR Type CRUD operations
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
-                   documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None, 
+                   documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None,
                    instructions: Optional[str] = None, response: Optional[str] = None):
     emr_type = EmrType(
         name=name,
@@ -125,7 +125,8 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         documentation_methods=documentation_methods,
         files=files,
         instructions=instructions,
-        response=response
+        response=response,
+        status='draft'  # Set default status to draft
     )
     db.add(emr_type)
     db.commit()
@@ -141,7 +142,7 @@ def get_all_emr_types(db: Session):
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
                    files: Optional[List[dict]] = None, instructions: Optional[str] = None,
-                   response: Optional[str] = None):
+                   response: Optional[str] = None, status: Optional[str] = None):
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
         return None
@@ -158,6 +159,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.instructions = instructions
     if response is not None:
         emr_type.response = response
+    if status is not None:
+        emr_type.status = status
 
     db.commit()
     db.refresh(emr_type)
@@ -169,5 +172,64 @@ def delete_emr_type(db: Session, emr_type_id: UUID):
         return False
 
     db.delete(emr_type)
+    db.commit()
+    return True
+
+# EMR Type Field CRUD operations
+def create_emr_type_field(db: Session, name: str, type: str):
+    field = EMRTypeField(name=name, type=type)
+    db.add(field)
+    db.commit()
+    db.refresh(field)
+    return field
+
+def get_emr_type_field(db: Session, field_id: UUID):
+    return db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
+
+def get_all_emr_type_fields(db: Session):
+    return db.query(EMRTypeField).all()
+
+def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None):
+    field = get_emr_type_field(db, field_id)
+    if not field:
+        return None
+
+    if name is not None:
+        field.name = name
+    if type is not None:
+        field.type = type
+
+    db.commit()
+    db.refresh(field)
+    return field
+
+def delete_emr_type_field(db: Session, field_id: UUID):
+    field = get_emr_type_field(db, field_id)
+    if not field:
+        return False
+
+    db.delete(field)
+    db.commit()
+    return True
+
+# EMR Type Result CRUD operations
+def create_emr_type_result(db: Session, emr_type_id: UUID, key: str, value: Optional[str] = None):
+    result = EMRTypeResult(
+        emr_type_id=emr_type_id,
+        key=key,
+        value=value
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+    return result
+
+def get_emr_type_results_by_emr_type(db: Session, emr_type_id: UUID):
+    return db.query(EMRTypeResult).filter(EMRTypeResult.emr_type_id == emr_type_id).all()
+
+def delete_all_emr_type_results_by_emr_type(db: Session, emr_type_id: UUID):
+    results = db.query(EMRTypeResult).filter(EMRTypeResult.emr_type_id == emr_type_id).all()
+    for result in results:
+        db.delete(result)
     db.commit()
     return True 
