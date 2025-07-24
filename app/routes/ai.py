@@ -146,7 +146,7 @@ def extract_only_essential_elements(html_content: str, max_chars: int) -> str:
     print(f"=== DEBUG: Aggressive extraction: {len(new_html)} chars with {element_count} essential elements ===")
     return new_html
 
-
+#Genarate Response button from fe is calling that API
 @router.post("/analyze-emr-file/")
 def analyze_emr_file_for_ai(
     req: GenerateRequest,
@@ -281,6 +281,7 @@ Please provide a clear, accurate response based on the HTML content and instruct
     
     return {"result": answer}
 
+# The save button on top from the instructions box in EMR Type Details was calling this but for now we took down that save button with instructions box from the fe
 @router.post("/save-response/")
 def save_response(
     req: SaveResponseRequest,
@@ -297,13 +298,9 @@ def save_response(
     
     return {"message": "Response saved successfully", "emr_type_id": emr_type_id}
 
-@router.post("/analyze-emr-chatgpt-style/")
-def analyze_emr_chatgpt_style(
-    req: GenerateRequest,
-    db: Session = Depends(get_db)
-):
-    """Analyze EMR file using ChatGPT-style approach"""
-    emr_type_id = req.emr_type_id
+# Get called right after the analyze-emr-type/{emr_type_id} API finished
+def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
+    """Internal function to analyze EMR file using ChatGPT-style approach"""
     emr = get_emr_type(db, emr_type_id)
     if not emr:
         raise HTTPException(status_code=404, detail="EMR type not found")
@@ -355,17 +352,48 @@ def analyze_emr_chatgpt_style(
     # Use the new truncation function
     html_content_for_gpt = truncate_html_for_tokens(raw_html)
     
-    # Use the instructions as the question for GPT
+    # Get all custom instructions from emr_type_results table
+    results = get_emr_type_results_by_emr_type(db, emr_type_id)
+    custom_instructions = []
+
+    for result in results:
+        if result.instructions and result.instructions.strip():
+            custom_instructions.append(f"{result.key}: {result.instructions}")
+    
+    # Combine all instructions into one big instruction
+    combined_instructions = "\n".join(custom_instructions)
+    print(f"=== DEBUG: Combined instructions: {combined_instructions} ===")
+
+    if not combined_instructions.strip():
+        # Get all field names from emr_type_fields
+        fields = get_all_emr_type_fields(db)
+        if not fields:
+            raise HTTPException(status_code=404, detail="No fields defined for EMR type")
+        
+        field_names = [field.name for field in fields]
+        print(f"=== DEBUG: Found {len(field_names)} fields to extract: {field_names} ===")
+        field_instructions = "\n".join([f"- {field_name}" for field_name in field_names])
+        final_instructions = field_instructions
+    else:
+        final_instructions = combined_instructions
+
+    # Use the final_instructions variable in the prompt
     prompt = f"""
 Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the requested information.
 
+INSTRUCTIONS:
+{final_instructions}
+
+Please extract ONLY the fields specified in the instructions above and provide the value found in the HTML. If a field is not found or empty, indicate "Not found" or "Empty".
+
+IMPORTANT: Respond with ONLY the field names and values in this exact format:
+FieldName: Value
+FieldName: Value
+
+Do not include any descriptive text, explanations, or other content.
+
 HTML CONTENT:
 {html_content_for_gpt}
-
-INSTRUCTIONS:
-{emr.instructions}
-
-Please provide a clear, accurate response based on the HTML content and instructions provided.
 """
     
     try:
@@ -379,15 +407,149 @@ Please provide a clear, accurate response based on the HTML content and instruct
         )
         
         answer = response.choices[0].message.content
+        print(f"=== DEBUG: AI Response: {answer} ===")
+        
+        # Parse the AI response into key-value pairs
+        # Expected format: "Client: John Doe\nDate: 07/12/2025\nDuration: 00:30"
+        lines = answer.strip().split('\n')
+        for line in lines:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                # Check if result already exists to preserve instructions
+                existing_result = db.query(EMRTypeResult).filter(
+                    EMRTypeResult.emr_type_id == emr_type_id,
+                    EMRTypeResult.key == key
+                ).first()
+                
+                if existing_result:
+                    # Update only the value, preserve existing instructions
+                    existing_result.value = value
+                    db.commit()
+                    print(f"=== DEBUG: Updated {key}: {value} (preserved instructions) ===")
+                else:
+                    # Create new result with empty instructions
+                    create_emr_type_result(
+                        db=db,
+                        emr_type_id=emr_type_id,
+                        key=key,
+                        value=value
+                    )
+                    print(f"=== DEBUG: Created {key}: {value} ===")
+        
+        # Generate JSON instructions from the results
+        results = get_emr_type_results_by_emr_type(db, emr_type_id)
+        json_instructions = generate_json_instructions_from_results(results)
+        
+        # Save the generated JSON instructions to the EMR type
+        update_emr_type(db, emr_type_id, instructions=json_instructions)
+        print(f"=== DEBUG: Saved generated JSON instructions to EMR type ===")
+        
+        # Update status to 'analyzed' after successful analysis
+        update_emr_type(db, emr_type_id, status='analyzed')
+        print(f"=== DEBUG: Updated EMR type status to 'analyzed' ===")
+        
+        return {"message": "Second API completed successfully"}
+        
     except Exception as e:
-        print(f"ERROR:root:Unhandled error for request http://localhost:8001/api/v1/ai/analyze-emr-chatgpt-style/: {str(e)}")
+        print(f"ERROR: Second API failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
-    
-    # Save the response to the database
-    update_emr_type(db, emr_type_id, response=answer)
-    
-    return {"result": answer}
 
+# REMOVED: This endpoint was redundant with the internal function
+# @router.post("/analyze-emr-chatgpt-style/")
+# def analyze_emr_chatgpt_style(
+#     req: GenerateRequest,
+#     db: Session = Depends(get_db)
+# ):
+#     """Analyze EMR file using ChatGPT-style approach"""
+#     emr_type_id = req.emr_type_id
+#     emr = get_emr_type(db, emr_type_id)
+#     if not emr:
+#         raise HTTPException(status_code=404, detail="EMR type not found")
+#     if not emr.files or len(emr.files) == 0:
+#         raise HTTPException(status_code=404, detail="No file found for this EMR type")
+#     if not emr.instructions:
+#         raise HTTPException(status_code=400, detail="No instructions found for this EMR type")
+    
+#     file_url = emr.files[0].get('url')
+#     file_type = emr.files[0].get('type')
+#     if not file_url:
+#         raise HTTPException(status_code=400, detail="File URL missing in EMR type")
+    
+#     region = os.getenv("AWS_REGION")
+#     prefix = f"https://{S3_BUCKET}.s3.{region}.amazonaws.com/"
+#     if not file_url.startswith(prefix):
+#         raise HTTPException(status_code=400, detail="File URL is not a valid S3 URL")
+    
+#     s3_key = urllib.parse.unquote(file_url[len(prefix):])
+#     print(f"=== DEBUG: Loading file from S3: {s3_key} ===")
+#     s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
+#     file_content = s3_response['Body'].read()
+    
+#     # Decode the file content
+#     raw_html = file_content.decode('utf-8', errors='ignore')
+    
+#     # Extract iframe content if present
+#     soup = BeautifulSoup(raw_html, 'html.parser')
+#     iframes = soup.find_all('iframe')
+#     if iframes:
+#         print("✅ Found iframe content in HTML")
+#         for iframe in iframes:
+#             # Check srcdoc attribute first
+#             srcdoc = iframe.get('srcdoc')
+#             if srcdoc:
+#                 print(f"=== DEBUG: Found iframe with srcdoc content ===")
+#                 raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
+#             else:
+#                 # Check src attribute
+#                 src = iframe.get('src')
+#                 if src:
+#                     print(f"=== DEBUG: Found iframe with src: {src} ===")
+#                 # Check inner content
+#                 iframe_content = iframe.get_text(strip=True)
+#                 if iframe_content:
+#                     print(f"=== DEBUG: Found iframe with inner content ===")
+#                     raw_html += "\n<!-- IFRAME CONTENT -->\n" + iframe_content
+    
+#     # Use the new truncation function
+#     html_content_for_gpt = truncate_html_for_tokens(raw_html)
+    
+#     # Use the instructions as the question for GPT
+#     prompt = f"""
+# Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the requested information.
+
+# HTML CONTENT:
+# {html_content_for_gpt}
+
+# INSTRUCTIONS:
+# {emr.instructions}
+
+# Please provide a clear, accurate response based on the HTML content and instructions provided.
+# """
+    
+#     try:
+#         response = openai_client.chat.completions.create(
+#             model="gpt-4o",
+#             messages=[
+#                 {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content."},
+#                 {"role": "user", "content": prompt}
+#             ],
+#             max_tokens=4000
+#         )
+        
+#         answer = response.choices[0].message.content
+#     except Exception as e:
+#         print(f"ERROR:root:Unhandled error for request http://localhost:8001/api/v1/ai/analyze-emr-chatgpt-style/: {str(e)}")
+#         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+    
+#     # Save the response to the database
+#     update_emr_type(db, emr_type_id, response=answer)
+    
+#     return {"result": answer}
+
+#Analyze button from the fe is calling this API
 @router.post("/analyze-emr-type/{emr_type_id}")
 def analyze_emr_type(
     emr_type_id: str,
@@ -507,17 +669,13 @@ HTML CONTENT:
                     )
                     print(f"=== DEBUG: Created {key}: {value} ===")
         
-        # Generate JSON instructions from the results
-        results = get_emr_type_results_by_emr_type(db, emr_type_id)
-        json_instructions = generate_json_instructions_from_results(results)
-        
-        # Save the generated JSON instructions to the EMR type
-        update_emr_type(db, emr_type_id, instructions=json_instructions)
-        print(f"=== DEBUG: Saved generated JSON instructions to EMR type ===")
-        
-        # Update status to 'analyzed' after successful analysis
-        update_emr_type(db, emr_type_id, status='analyzed')
-        print(f"=== DEBUG: Updated EMR type status to 'Analyzed' ===")
+        # Automatically call the second API to update results with custom instructions
+        try:
+            # Call the second API internally
+            second_api_result = analyze_emr_chatgpt_style_internal(emr_type_id, db)
+            print(f"=== DEBUG: Second API completed: {second_api_result}")
+        except Exception as e:
+            print(f"=== DEBUG: Second API failed: {str(e)}")
         
         return {"message": "Analysis completed successfully"}
         
