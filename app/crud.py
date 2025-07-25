@@ -213,11 +213,12 @@ def delete_emr_type_field(db: Session, field_id: UUID):
     return True
 
 # EMR Type Result CRUD operations
-def create_emr_type_result(db: Session, emr_type_id: UUID, key: str, value: Optional[str] = None):
+def create_emr_type_result(db: Session, emr_type_id: UUID, key: str, value: Optional[str] = None, status: Optional[str] = None):
     result = EMRTypeResult(
         emr_type_id=emr_type_id,
         key=key,
-        value=value
+        value=value,
+        status=status
     )
     db.add(result)
     db.commit()

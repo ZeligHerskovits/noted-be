@@ -17,7 +17,8 @@ from ..schemas import (
     EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile,
     EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse,
     EMRTypeResultCreate, EMRTypeResultResponse, EmrTypeResponseOnly,
-    UpdateResultInstructionsRequest, EMRTypeResultInstructionsOnly
+    UpdateResultInstructionsRequest, EMRTypeResultInstructionsOnly,
+    UpdateResultStatusRequest
 )
 from ..crud import (
     create_emr_type, get_emr_type, get_all_emr_types, 
@@ -181,6 +182,46 @@ def update_result_instructions(
     
     return {
         "message": "Instructions updated successfully"
+    }
+
+# EMR Type Results - Update status endpoint
+@router.put("/{emr_type_id}/status")
+def update_result_status(
+    emr_type_id: UUID,
+    request: UpdateResultStatusRequest,
+    db: Session = Depends(get_db)
+):
+    """Update status for a specific EMR type result by key"""
+    from ..models import EMRTypeResult
+    
+    # Get the result by emr_type_id and key
+    result = db.query(EMRTypeResult).filter(
+        EMRTypeResult.emr_type_id == emr_type_id,
+        EMRTypeResult.key == request.key
+    ).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+    
+    # Validate status value
+    valid_statuses = ['found', 'not found', 'ignore']
+    if request.status.lower() not in valid_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    # Update the status (store in lowercase)
+    result.status = request.status.lower()
+    db.commit()
+    db.refresh(result)
+    
+    print(f"=== DEBUG: Updated status for {request.key} to {result.status} ===")
+    
+    return {
+        "message": "Status updated successfully",
+        "key": request.key,
+        "status": result.status
     }
 
 @router.put("/{emr_type_id}", response_model=EmrTypeResponse)

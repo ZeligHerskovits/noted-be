@@ -306,8 +306,8 @@ def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
         raise HTTPException(status_code=404, detail="EMR type not found")
     if not emr.files or len(emr.files) == 0:
         raise HTTPException(status_code=404, detail="No file found for this EMR type")
-    if not emr.instructions:
-        raise HTTPException(status_code=400, detail="No instructions found for this EMR type")
+    # if not emr.instructions:
+    #     raise HTTPException(status_code=400, detail="No instructions found for this EMR type")
     
     file_url = emr.files[0].get('url')
     file_type = emr.files[0].get('type')
@@ -424,20 +424,28 @@ HTML CONTENT:
                     EMRTypeResult.key == key
                 ).first()
                 
-                if existing_result:
-                    # Update only the value, preserve existing instructions
-                    existing_result.value = value
-                    db.commit()
-                    print(f"=== DEBUG: Updated {key}: {value} (preserved instructions) ===")
+                # Set status based on value
+                if value and 'not found' in value.lower():
+                    status = 'not found'
                 else:
-                    # Create new result with empty instructions
+                    status = 'found'
+                
+                if existing_result:
+                    # Update only the value and status, preserve existing instructions
+                    existing_result.value = value
+                    existing_result.status = status
+                    db.commit()
+                    print(f"=== DEBUG: Updated {key}: {value} (status: {status}) (preserved instructions) ===")
+                else:
+                    # Create new result with empty instructions and status
                     create_emr_type_result(
                         db=db,
                         emr_type_id=emr_type_id,
                         key=key,
-                        value=value
+                        value=value,
+                        status=status
                     )
-                    print(f"=== DEBUG: Created {key}: {value} ===")
+                    print(f"=== DEBUG: Created {key}: {value} (status: {status}) ===")
         
         # Generate JSON instructions from the results
         results = get_emr_type_results_by_emr_type(db, emr_type_id)
@@ -648,6 +656,12 @@ HTML CONTENT:
                 key = key.strip()
                 value = value.strip()
                 
+                # Set status based on value
+                if value and 'not found' in value.lower():
+                    status = 'not found'
+                else:
+                    status = 'found'
+                
                 # Check if result already exists to preserve instructions
                 existing_result = db.query(EMRTypeResult).filter(
                     EMRTypeResult.emr_type_id == emr_type_id,
@@ -655,19 +669,21 @@ HTML CONTENT:
                 ).first()
                 
                 if existing_result:
-                    # Update only the value, preserve existing instructions
+                    # Update only the value and status, preserve existing instructions
                     existing_result.value = value
+                    existing_result.status = status
                     db.commit()
-                    print(f"=== DEBUG: Updated {key}: {value} (preserved instructions) ===")
+                    print(f"=== DEBUG: Updated {key}: {value} (status: {status}) (preserved instructions) ===")
                 else:
-                    # Create new result with empty instructions
+                    # Create new result with empty instructions and status
                     create_emr_type_result(
                         db=db,
                         emr_type_id=emr_type_id,
                         key=key,
-                        value=value
+                        value=value,
+                        status=status
                     )
-                    print(f"=== DEBUG: Created {key}: {value} ===")
+                    print(f"=== DEBUG: Created {key}: {value} (status: {status}) ===")
         
         # Automatically call the second API to update results with custom instructions
         try:

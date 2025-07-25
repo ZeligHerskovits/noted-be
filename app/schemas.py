@@ -185,11 +185,13 @@ class EMRTypeResultCreate(BaseModel):
     emr_type_id: UUID
     key: str
     value: Optional[str] = None
+    status: Optional[str] = None
 
 class EMRTypeResultResponse(BaseModel):
     key: str
     value: Optional[str] = None
     instructions: Optional[str] = None
+    status: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -203,4 +205,8 @@ class UpdateResultInstructionsRequest(BaseModel):
 
 class EMRTypeResultInstructionsOnly(BaseModel):
     key: str
-    instructions: Optional[str] = None 
+    instructions: Optional[str] = None
+
+class UpdateResultStatusRequest(BaseModel):
+    key: str
+    status: str 
