@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from ..routes.auth import get_current_user_with_role
 import openai
 import os
 import re
@@ -150,7 +151,8 @@ def extract_only_essential_elements(html_content: str, max_chars: int) -> str:
 @router.post("/analyze-emr-file/")
 def analyze_emr_file_for_ai(
     req: GenerateRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     emr_type_id = req.emr_type_id
     emr = get_emr_type(db, emr_type_id)
@@ -285,7 +287,8 @@ Please provide a clear, accurate response based on the HTML content and instruct
 @router.post("/save-response/")
 def save_response(
     req: SaveResponseRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Save a response to the EMR type"""
     emr_type_id = req.emr_type_id
@@ -571,7 +574,8 @@ HTML CONTENT:
 @router.post("/analyze-emr-type/{emr_type_id}")
 def analyze_emr_type(
     emr_type_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Analyze EMR type using field definitions and save results"""
     

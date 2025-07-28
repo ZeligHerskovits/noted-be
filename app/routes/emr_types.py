@@ -13,6 +13,7 @@ from pydantic import BaseModel
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from ..db import get_db
+from ..routes.auth import get_current_user_with_role
 from ..schemas import (
     EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile,
     EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse,
@@ -83,7 +84,8 @@ async def create_emr_type_with_files(
     session_type: Optional[str] = Form(None),
     documentation_methods: Optional[str] = Form(None),
     files: Optional[List[UploadFile]] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     files_data = []
     if files:
@@ -107,7 +109,10 @@ async def create_emr_type_with_files(
     return emr_type
 
 @router.get("/", response_model=List[EmrTypeResponse])
-def get_all_emr_types_endpoint(db: Session = Depends(get_db)):
+def get_all_emr_types_endpoint(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Get all EMR types"""
     try:
         emr_types = get_all_emr_types(db)
@@ -120,7 +125,12 @@ def get_all_emr_types_endpoint(db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Error fetching EMR types: {str(e)}")
 
 @router.get("/{emr_type_id}")
-def get_emr_type_endpoint(emr_type_id: UUID, response_only: bool = False, db: Session = Depends(get_db)):
+def get_emr_type_endpoint(
+    emr_type_id: UUID, 
+    response_only: bool = False, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Get a specific EMR type by ID"""
     try:
         emr_type = get_emr_type(db, emr_type_id)
@@ -142,7 +152,12 @@ def get_emr_type_endpoint(emr_type_id: UUID, response_only: bool = False, db: Se
 
 # EMR Type Results - GET endpoint for frontend display
 @router.get("/{emr_type_id}/results")
-def get_emr_type_results(emr_type_id: UUID, instructions_only: bool = False, db: Session = Depends(get_db)):
+def get_emr_type_results(
+    emr_type_id: UUID, 
+    instructions_only: bool = False, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Get all results for a specific EMR type (for frontend display)"""
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
     
@@ -157,7 +172,8 @@ def get_emr_type_results(emr_type_id: UUID, instructions_only: bool = False, db:
 def update_result_instructions(
     emr_type_id: UUID,
     request: UpdateResultInstructionsRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Update instructions for a specific EMR type result by key"""
     from ..models import EMRTypeResult
@@ -189,7 +205,8 @@ def update_result_instructions(
 def update_result_status(
     emr_type_id: UUID,
     request: UpdateResultStatusRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Update status for a specific EMR type result by key"""
     from ..models import EMRTypeResult
@@ -233,7 +250,8 @@ async def update_emr_type_with_files(
     files: Optional[List[UploadFile]] = File(None),
     instructions: Optional[str] = Form(None),
     clear_files: Optional[bool] = Form(False),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     # Get existing EMR type to preserve files if not updating them
     existing_emr_type = get_emr_type(db, emr_type_id)
@@ -283,7 +301,11 @@ async def update_emr_type_with_files(
     return updated_emr_type
 
 @router.delete("/{emr_type_id}")
-def delete_emr_type_endpoint(emr_type_id: UUID, db: Session = Depends(get_db)):
+def delete_emr_type_endpoint(
+    emr_type_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Delete an EMR type"""
     try:
         success = delete_emr_type(db, emr_type_id)
@@ -300,7 +322,8 @@ def delete_emr_type_endpoint(emr_type_id: UUID, db: Session = Depends(get_db)):
 def upload_files_to_emr_type(
     emr_type_id: UUID,
     files: List[UploadFile] = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Upload files to an existing EMR type"""
     try:
@@ -339,7 +362,11 @@ def upload_files_to_emr_type(
         raise HTTPException(status_code=400, detail=f"Error uploading files: {str(e)}")
 
 @router.get("/{emr_type_id}/files")
-def get_emr_type_files(emr_type_id: UUID, db: Session = Depends(get_db)):
+def get_emr_type_files(
+    emr_type_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Get all files for a specific EMR type"""
     try:
         emr_type = get_emr_type(db, emr_type_id)
@@ -354,7 +381,12 @@ def get_emr_type_files(emr_type_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Error fetching files: {str(e)}")
 
 @router.delete("/{emr_type_id}/files/{file_index}")
-def remove_file_from_emr_type(emr_type_id: UUID, file_index: int, db: Session = Depends(get_db)):
+def remove_file_from_emr_type(
+    emr_type_id: UUID, 
+    file_index: int, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Remove a specific file from an EMR type by index"""
     try:
         emr_type = get_emr_type(db, emr_type_id)
@@ -391,7 +423,8 @@ def remove_file_from_emr_type(emr_type_id: UUID, file_index: int, db: Session = 
 def replace_all_files_in_emr_type(
     emr_type_id: UUID,
     files: List[EmrTypeFile],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Replace all files in an EMR type with new files"""
     try:
@@ -420,7 +453,11 @@ def replace_all_files_in_emr_type(
         raise HTTPException(status_code=400, detail=f"Error replacing files: {str(e)}")
 
 @router.delete("/{emr_type_id}/files")
-def remove_all_files_from_emr_type(emr_type_id: UUID, db: Session = Depends(get_db)):
+def remove_all_files_from_emr_type(
+    emr_type_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Remove all files from an EMR type"""
     try:
         emr_type = get_emr_type(db, emr_type_id)
@@ -445,7 +482,11 @@ def remove_all_files_from_emr_type(emr_type_id: UUID, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}")
 
 @router.put("/{emr_type_id}/finalize")
-def finalize_emr_type(emr_type_id: UUID, db: Session = Depends(get_db)):
+def finalize_emr_type(
+    emr_type_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """
     Finalize an EMR type by changing its status to 'active'.
     Only works if current status is 'Generated'.
@@ -523,18 +564,29 @@ def delete_emr_type_field(db: Session, field_id: UUID):
 
 # EMR Type Fields API Endpoints
 @fields_router.post("/", response_model=EMRTypeFieldResponse)
-def create_field(field: EMRTypeFieldCreate, db: Session = Depends(get_db)):
+def create_field(
+    field: EMRTypeFieldCreate, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Create a new EMR type field"""
     db_field = create_emr_type_field(db, name=field.name, type=field.type)
     return db_field
 
 @fields_router.get("/", response_model=List[EMRTypeFieldResponse])
-def get_fields(db: Session = Depends(get_db)):
+def get_fields(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Get all EMR type fields"""
     return get_all_emr_type_fields(db)
 
 @fields_router.get("/{field_id}", response_model=EMRTypeFieldResponse)
-def get_field(field_id: UUID, db: Session = Depends(get_db)):
+def get_field(
+    field_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Get EMR type field by ID"""
     db_field = get_emr_type_field(db, field_id)
     if not db_field:
@@ -542,7 +594,12 @@ def get_field(field_id: UUID, db: Session = Depends(get_db)):
     return db_field
 
 @fields_router.put("/{field_id}", response_model=EMRTypeFieldResponse)
-def update_field(field_id: UUID, field: EMRTypeFieldUpdate, db: Session = Depends(get_db)):
+def update_field(
+    field_id: UUID, 
+    field: EMRTypeFieldUpdate, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Update EMR type field"""
     db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type)
     if not db_field:
@@ -550,7 +607,11 @@ def update_field(field_id: UUID, field: EMRTypeFieldUpdate, db: Session = Depend
     return db_field
 
 @fields_router.delete("/{field_id}")
-def delete_field(field_id: UUID, db: Session = Depends(get_db)):
+def delete_field(
+    field_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
     """Delete EMR type field"""
     success = delete_emr_type_field(db, field_id)
     if not success:
