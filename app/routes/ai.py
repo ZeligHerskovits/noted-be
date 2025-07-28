@@ -158,7 +158,7 @@ def analyze_emr_file_for_ai(
         raise HTTPException(status_code=404, detail="EMR type not found")
     
     # Check if EMR type has been analyzed before allowing generate response
-    if emr.status != 'analyzed':
+    if emr.status == 'draft':
         raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
     
     if not emr.files or len(emr.files) == 0:
@@ -357,6 +357,11 @@ def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
     custom_instructions = []
 
     for result in results:
+        # Skip fields with status "ignore"  this we will need only if we want to not look on instructions from a key that status is ignore and give out value based on it 
+        # if result.status == "ignore":
+        #     print(f"=== DEBUG: Skipping {result.key} because status is 'ignore' ===")
+        #     continue
+            
         if result.instructions and result.instructions.strip():
             custom_instructions.append(f"{result.key}: {result.instructions}")
     
@@ -431,11 +436,13 @@ HTML CONTENT:
                     status = 'found'
                 
                 if existing_result:
-                    # Update only the value and status, preserve existing instructions
+                    # Update only the value, preserve existing instructions and status if it's "ignore"
                     existing_result.value = value
-                    existing_result.status = status
+                    # Only update status if it's not "ignore"
+                    if existing_result.status != "ignore":
+                        existing_result.status = status
                     db.commit()
-                    print(f"=== DEBUG: Updated {key}: {value} (status: {status}) (preserved instructions) ===")
+                    print(f"=== DEBUG: Updated {key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
                 else:
                     # Create new result with empty instructions and status
                     create_emr_type_result(
@@ -449,6 +456,9 @@ HTML CONTENT:
         
         # Generate JSON instructions from the results
         results = get_emr_type_results_by_emr_type(db, emr_type_id)
+        # Filter out results with status "ignore"
+        results = [result for result in results if result.status != "ignore"]
+
         json_instructions = generate_json_instructions_from_results(results)
         
         # Save the generated JSON instructions to the EMR type
@@ -669,11 +679,13 @@ HTML CONTENT:
                 ).first()
                 
                 if existing_result:
-                    # Update only the value and status, preserve existing instructions
+                    # Update only the value, preserve existing instructions and status if it's "ignore"
                     existing_result.value = value
-                    existing_result.status = status
+                    # Only update status if it's not "ignore"
+                    if existing_result.status != "ignore":
+                        existing_result.status = status
                     db.commit()
-                    print(f"=== DEBUG: Updated {key}: {value} (status: {status}) (preserved instructions) ===")
+                    print(f"=== DEBUG: Updated {key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
                 else:
                     # Create new result with empty instructions and status
                     create_emr_type_result(
