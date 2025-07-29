@@ -357,6 +357,7 @@ def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
     
     # Get all custom instructions from emr_type_results table
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
+    results = [result for result in results if result.status != "confirmed"]
     custom_instructions = []
 
     for result in results:
@@ -373,19 +374,18 @@ def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
     print(f"=== DEBUG: Combined instructions: {combined_instructions} ===")
 
     if not combined_instructions.strip():
-        # Get all field names from emr_type_fields
-        fields = get_all_emr_type_fields(db)
-        if not fields:
-            raise HTTPException(status_code=404, detail="No fields defined for EMR type")
+        # Get field names from results table keys
+        field_names = [result.key for result in results if result.status != "confirmed"]
+        if not field_names:
+            raise HTTPException(status_code=404, detail="No fields found in results table")
         
-        field_names = [field.name for field in fields]
         print(f"=== DEBUG: Found {len(field_names)} fields to extract: {field_names} ===")
         field_instructions = "\n".join([f"- {field_name}" for field_name in field_names])
         final_instructions = field_instructions
     else:
         final_instructions = combined_instructions
 
-    # Use the final_instructions variable in the prompt
+   # Use the final_instructions variable in the prompt
     prompt = f"""
 Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the requested information.
 
@@ -426,10 +426,29 @@ HTML CONTENT:
                 key = key.strip()
                 value = value.strip()
                 
+                # Normalize field name for consistency (remove leading dashes, normalize spaces, etc.)
+                def normalize_field_name(field_name):
+                    # Remove leading dashes and spaces
+                    cleaned = field_name.lstrip('- ').strip()
+                    # Normalize multiple spaces to single space
+                    cleaned = ' '.join(cleaned.split())
+                    # Remove any remaining dashes and normalize
+                    cleaned = cleaned.replace('-', ' ').strip()
+                    # Convert camelCase to spaces (e.g., "DeliveredOff" -> "Delivered Off")
+                    import re
+                    cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
+                    # Normalize multiple spaces again
+                    cleaned = ' '.join(cleaned.split())
+                    # Convert to lowercase for case-insensitive comparison
+                    cleaned = cleaned.lower()
+                    return cleaned
+                
+                clean_key = normalize_field_name(key)
+
                 # Check if result already exists to preserve instructions
                 existing_result = db.query(EMRTypeResult).filter(
                     EMRTypeResult.emr_type_id == emr_type_id,
-                    EMRTypeResult.key == key
+                    EMRTypeResult.key == clean_key
                 ).first()
                 
                 # Set status based on value
@@ -445,17 +464,17 @@ HTML CONTENT:
                     if existing_result.status != "ignore":
                         existing_result.status = status
                     db.commit()
-                    print(f"=== DEBUG: Updated {key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
+                    print(f"=== DEBUG: Updated {clean_key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
                 else:
                     # Create new result with empty instructions and status
                     create_emr_type_result(
                         db=db,
                         emr_type_id=emr_type_id,
-                        key=key,
+                        key=clean_key,
                         value=value,
                         status=status
                     )
-                    print(f"=== DEBUG: Created {key}: {value} (status: {status}) ===")
+                    print(f"=== DEBUG: Created {clean_key}: {value} (status: {status}) ===")
         
         # Generate JSON instructions from the results
         results = get_emr_type_results_by_emr_type(db, emr_type_id)
@@ -676,30 +695,50 @@ HTML CONTENT:
                 else:
                     status = 'found'
                 
+                # Normalize field name for consistency (remove leading dashes, normalize spaces, etc.)
+                def normalize_field_name(field_name):
+                    # Remove leading dashes and spaces
+                    cleaned = field_name.lstrip('- ').strip()
+                    # Normalize multiple spaces to single space
+                    cleaned = ' '.join(cleaned.split())
+                    # Remove any remaining dashes and normalize
+                    cleaned = cleaned.replace('-', ' ').strip()
+                    # Convert camelCase to spaces (e.g., "DeliveredOff" -> "Delivered Off")
+                    import re
+                    cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
+                    # Normalize multiple spaces again
+                    cleaned = ' '.join(cleaned.split())
+                    # Convert to lowercase for case-insensitive comparison
+                    cleaned = cleaned.lower()
+                    return cleaned
+                
+                clean_key = normalize_field_name(key)
+
                 # Check if result already exists to preserve instructions
                 existing_result = db.query(EMRTypeResult).filter(
                     EMRTypeResult.emr_type_id == emr_type_id,
-                    EMRTypeResult.key == key
+                    EMRTypeResult.key == clean_key
                 ).first()
                 
                 if existing_result:
-                    # Update only the value, preserve existing instructions and status if it's "ignore"
-                    existing_result.value = value
+                  # Update only the value if statuse is not "confirmed"
+                    if existing_result.status != "confirmed":
+                       existing_result.value = value
                     # Only update status if it's not "ignore"
                     if existing_result.status != "ignore":
                         existing_result.status = status
                     db.commit()
-                    print(f"=== DEBUG: Updated {key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
+                    print(f"=== DEBUG: Updated {clean_key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
                 else:
                     # Create new result with empty instructions and status
                     create_emr_type_result(
                         db=db,
                         emr_type_id=emr_type_id,
-                        key=key,
+                        key=clean_key,
                         value=value,
                         status=status
                     )
-                    print(f"=== DEBUG: Created {key}: {value} (status: {status}) ===")
+                    print(f"=== DEBUG: Created {clean_key}: {value} (status: {status}) ===")
         
         # Automatically call the second API to update results with custom instructions
         try:

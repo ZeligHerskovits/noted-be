@@ -221,7 +221,7 @@ def update_result_status(
         raise HTTPException(status_code=404, detail="Result not found")
     
     # Validate status value
-    valid_statuses = ['found', 'not found', 'ignore']
+    valid_statuses = ['found', 'not found', 'ignore', 'confirmed']
     if request.status.lower() not in valid_statuses:
         raise HTTPException(
             status_code=400, 
