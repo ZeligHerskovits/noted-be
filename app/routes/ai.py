@@ -163,6 +163,17 @@ def analyze_emr_file_for_ai(
     if emr.status == 'draft':
         raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
     
+    # Check if all results have been processed (no more "found" or "not found" statuses)
+    results = get_emr_type_results_by_emr_type(db, emr_type_id)
+    unprocessed_results = [result for result in results if result.status in ['found', 'not found']]
+    
+    if unprocessed_results:
+        unprocessed_fields = [result.key for result in unprocessed_results]
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot generate response while there are unprocessed fields with 'found' or 'not found' status. Please review and update the following fields: {', '.join(unprocessed_fields)}"
+        )
+
     if not emr.files or len(emr.files) == 0:
         raise HTTPException(status_code=404, detail="No file found for this EMR type")
     if not emr.instructions:
@@ -360,6 +371,13 @@ def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
     results = [result for result in results if result.status != "confirmed"]
     custom_instructions = []
 
+    # Get field names that DON'T have instructions
+    fields_without_instructions = [result.key for result in results if result.status != "confirmed" and not (result.instructions and result.instructions.strip())]
+    if fields_without_instructions:
+        print(f"=== DEBUG: Found {len(fields_without_instructions)} fields without instructions: {fields_without_instructions} ===")
+        field_instructions = "\n".join([f"- {field_name}" for field_name in fields_without_instructions])
+        custom_instructions.append(f"Fields to extract:\n{field_instructions}")
+    
     for result in results:
         # Skip fields with status "ignore"  this we will need only if we want to not look on instructions from a key that status is ignore and give out value based on it 
         # if result.status == "ignore":
@@ -368,35 +386,27 @@ def analyze_emr_chatgpt_style_internal(emr_type_id: str, db: Session):
             
         if result.instructions and result.instructions.strip():
             custom_instructions.append(f"{result.key}: {result.instructions}")
-    
+
     # Combine all instructions into one big instruction
     combined_instructions = "\n".join(custom_instructions)
     print(f"=== DEBUG: Combined instructions: {combined_instructions} ===")
 
-    if not combined_instructions.strip():
-        # Get field names from results table keys
-        field_names = [result.key for result in results if result.status != "confirmed"]
-        if not field_names:
-            raise HTTPException(status_code=404, detail="No fields found in results table")
-        
-        print(f"=== DEBUG: Found {len(field_names)} fields to extract: {field_names} ===")
-        field_instructions = "\n".join([f"- {field_name}" for field_name in field_names])
-        final_instructions = field_instructions
-    else:
-        final_instructions = combined_instructions
-
    # Use the final_instructions variable in the prompt
+   #indicate "Not found" if you dont found the field or "Empty" if you found the field but not the value
+   #IMPORTANT: EMR forms may use different field names than your instructions. Be smart and look for similar/synonymous field names. For example, if you're looking for "Client" but find "Client Name" or "Client - Name" in the HTML, extract that value. However, ALWAYS return the ORIGINAL field name from your instructions as the key, not the HTML field name.
     prompt = f"""
 Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the requested information.
 
 INSTRUCTIONS:
-{final_instructions}
+{combined_instructions}
 
-Please extract ONLY the fields specified in the instructions above and provide the value found in the HTML. If a field is not found or empty, indicate "Not found" or "Empty".
+Please extract ONLY the fields specified in the instructions above and provide the value found in the HTML. If a field is not found or empty indicate "Not found" or "Empty".
 
 IMPORTANT: Respond with ONLY the field names and values in this exact format:
 FieldName: Value
 FieldName: Value
+
+IMPORTANT: Always use the exact field names provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML.
 
 Do not include any descriptive text, explanations, or other content.
 
@@ -461,7 +471,7 @@ HTML CONTENT:
                     # Update only the value, preserve existing instructions and status if it's "ignore"
                     existing_result.value = value
                     # Only update status if it's not "ignore"
-                    if existing_result.status != "ignore":
+                    if existing_result.status != "ignore" and existing_result.status != "confirmed":
                         existing_result.status = status
                     db.commit()
                     print(f"=== DEBUG: Updated {clean_key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
@@ -650,16 +660,20 @@ def analyze_emr_type(
     field_instructions = "\n".join([f"- {field_name}" for field_name in field_names])
     
     # Create the prompt with dynamic field instructions
+    #indicate "Not found" if you dont found the field or "Empty" if you found teh field but not the value
+    #IMPORTANT: EMR forms may use different field names than your instructions. Be smart and look for similar/synonymous field names. For example, if you're looking for "Client" but find "Client Name" or "Client - Name" in the HTML, extract that value. However, ALWAYS return the ORIGINAL field name from your instructions as the key, not the HTML field name.
     prompt = f"""
 Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the following fields:
 
 {field_instructions}
 
-Please extract each field and provide the value found in the HTML. If a field is not found or empty, indicate "Not found" or "Empty".
+Please extract ONLY the fields specified in the instructions above and provide the value found in the HTML. If a field is not found or empty indicate "Not found" or "Empty".
 
 IMPORTANT: Respond with ONLY the field names and values in this exact format:
 FieldName: Value
 FieldName: Value
+
+IMPORTANT: Always use the exact field names provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML.
 
 Do not include any descriptive text, explanations, or other content.
 
@@ -725,7 +739,7 @@ HTML CONTENT:
                     if existing_result.status != "confirmed":
                        existing_result.value = value
                     # Only update status if it's not "ignore"
-                    if existing_result.status != "ignore":
+                    if existing_result.status != "ignore" and existing_result.status != "confirmed":
                         existing_result.status = status
                     db.commit()
                     print(f"=== DEBUG: Updated {clean_key}: {value} (status: {existing_result.status}) (preserved instructions) ===")
