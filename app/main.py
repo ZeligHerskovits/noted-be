@@ -80,7 +80,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-         FRONTEND_URL
+        "https://localhost:3000", 
+        FRONTEND_URL,
+        "https://noteddev.objectif.solutions",
+        "*"  # Allow all origins for development - remove in production
     ],
     allow_credentials=True,
     allow_methods=["*"],
