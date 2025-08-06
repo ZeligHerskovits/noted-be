@@ -124,7 +124,7 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
         response = await loop.run_in_executor(
             None,
             lambda: openai_client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and list each field with its value."},
                     {"role": "user", "content": prompt}
@@ -371,7 +371,7 @@ Please provide a clear, accurate response based on the HTML content and instruct
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content."},
                 {"role": "user", "content": prompt}
@@ -561,7 +561,7 @@ HTML CONTENT: {html_content_for_gpt}"""
 
             try:
                 response = openai_client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and list each field with its value and label."},
                         {"role": "user", "content": prompt}
