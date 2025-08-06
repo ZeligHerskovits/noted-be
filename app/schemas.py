@@ -203,10 +203,12 @@ class EmrTypeResponseOnly(BaseModel):
 
 class UpdateResultInstructionsRequest(BaseModel):
     key: str
+    value: str
     instructions: str 
 
 class EMRTypeResultInstructionsOnly(BaseModel):
     key: str
+    value: str
     instructions: Optional[str] = None
 
 class UpdateResultStatusRequest(BaseModel):

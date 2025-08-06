@@ -176,11 +176,11 @@ async def process_chunks_async(chunks: list, prompt_template: str, field_instruc
             processed_responses.append("")
             completed_count += 1
             
-            # Update progress even for failed chunks
-            # if emr_type_id and db:
-            #     update_emr_type(db, emr_type_id, processed_chunks=completed_count, total_chunks=len(chunks))
-            #     progress = int((completed_count / len(chunks)) * 100)
-            #     print(f"=== DEBUG: Progress after error: {progress}% ({completed_count}/{len(chunks)} chunks) ===")
+            #Update progress even for failed chunks
+            if emr_type_id and db:
+                update_emr_type(db, emr_type_id, processed_chunks=completed_count, total_chunks=len(chunks))
+                progress = int((completed_count / len(chunks)) * 100)
+                print(f"=== DEBUG: Progress after error: {progress}% ({completed_count}/{len(chunks)} chunks) ===")
 
     return processed_responses
 
@@ -419,7 +419,25 @@ async def analyze_emr_type(
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
-    """Analyze EMR type with chunking and parallel processing"""
+    # Check current status first
+    emr_type = get_emr_type(db, emr_type_id)
+    if not emr_type:
+        raise HTTPException(status_code=404, detail="EMR type not found")
+    
+    # Simple logic: Check if analysis is in progress by comparing chunks
+    # If total_chunks != processed_chunks, someone is analyzing
+    total_chunks = emr_type.total_chunks or 0
+    processed_chunks = emr_type.processed_chunks or 0
+    
+    if total_chunks != processed_chunks:
+        # Analysis is in progress - block anyone from starting new analysis
+      
+            progress = int((processed_chunks or 0) / total_chunks * 100)
+            raise HTTPException(
+                status_code=409, 
+                detail=f"EMR analysis is already in progress ({progress}% complete). Please wait for it to complete."
+            )
+
     try:
         # Get EMR type
         emr_type = get_emr_type(db, emr_type_id)

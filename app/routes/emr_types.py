@@ -162,8 +162,8 @@ def get_emr_type_results(
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
     
     if instructions_only:
-        # Return only key and instructions
-        return [EMRTypeResultInstructionsOnly(key=result.key, instructions=result.instructions) for result in results]
+        # Return only key value and instructions
+        return [EMRTypeResultInstructionsOnly(key=result.key, value=result.value, instructions=result.instructions) for result in results]
     
     return [EMRTypeResultResponse.from_orm(result) for result in results]
 
@@ -178,10 +178,11 @@ def update_result_instructions(
     """Update instructions for a specific EMR type result by key"""
     from ..models import EMRTypeResult
     
-    # Get the result by emr_type_id and key
+    # Get the result by emr_type_id and key and value
     result = db.query(EMRTypeResult).filter(
         EMRTypeResult.emr_type_id == emr_type_id,
-        EMRTypeResult.key == request.key
+        EMRTypeResult.key == request.key,
+        EMRTypeResult.value == request.value
     ).first()
     
     if not result:
