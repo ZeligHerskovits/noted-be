@@ -69,6 +69,8 @@ class EmrType(Base):
     instructions = Column(String, nullable=True)
     response = Column(String, nullable=True)
     status = Column(String(100), nullable=True)
+    total_chunks = Column(Integer, nullable=True)
+    processed_chunks = Column(Integer, nullable=True)
 
 class EMRTypeField(Base):
     __tablename__ = "emr_type_fields"
@@ -88,5 +90,6 @@ class EMRTypeResult(Base):
     value = Column(Text, nullable=True)
     instructions = Column(Text, nullable=True)
     status = Column(String(100), nullable=True)
+    label = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 

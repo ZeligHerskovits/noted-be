@@ -142,9 +142,12 @@ def get_all_emr_types(db: Session):
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
                    files: Optional[List[dict]] = None, instructions: Optional[str] = None,
-                   response: Optional[str] = None, status: Optional[str] = None):
+                   response: Optional[str] = None, status: Optional[str] = None,
+                   total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None):
+    print(f"=== DEBUG: update_emr_type called with emr_type_id={emr_type_id}, processed_chunks={processed_chunks}, total_chunks={total_chunks} ===")
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
+        print(f"=== DEBUG: EMR type not found for id={emr_type_id} ===")
         return None
 
     if name is not None:
@@ -161,9 +164,18 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.response = response
     if status is not None:
         emr_type.status = status
+    if total_chunks is not None:
+        emr_type.total_chunks = total_chunks
+        print(f"=== DEBUG: Updated total_chunks to {total_chunks} ===")
+    if processed_chunks is not None:
+        emr_type.processed_chunks = processed_chunks
+        print(f"=== DEBUG: Updated processed_chunks to {processed_chunks} ===")
 
+    print(f"=== DEBUG: About to commit database changes ===")
     db.commit()
+    print(f"=== DEBUG: Database commit completed ===")
     db.refresh(emr_type)
+    print(f"=== DEBUG: Database refresh completed, current processed_chunks={emr_type.processed_chunks} ===")
     return emr_type
 
 def delete_emr_type(db: Session, emr_type_id: UUID):
@@ -213,12 +225,13 @@ def delete_emr_type_field(db: Session, field_id: UUID):
     return True
 
 # EMR Type Result CRUD operations
-def create_emr_type_result(db: Session, emr_type_id: UUID, key: str, value: Optional[str] = None, status: Optional[str] = None):
+def create_emr_type_result(db: Session, emr_type_id: UUID, key: str, value: Optional[str] = None, status: Optional[str] = None, label: Optional[str] = None):
     result = EMRTypeResult(
         emr_type_id=emr_type_id,
         key=key,
         value=value,
-        status=status
+        status=status,
+        label=label
     )
     db.add(result)
     db.commit()

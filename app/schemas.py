@@ -186,12 +186,14 @@ class EMRTypeResultCreate(BaseModel):
     key: str
     value: Optional[str] = None
     status: Optional[str] = None
+    label: Optional[str] = None
 
 class EMRTypeResultResponse(BaseModel):
     key: str
     value: Optional[str] = None
     instructions: Optional[str] = None
     status: Optional[str] = None
+    label: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -209,4 +211,13 @@ class EMRTypeResultInstructionsOnly(BaseModel):
 
 class UpdateResultStatusRequest(BaseModel):
     key: str
-    status: str 
+    status: str
+
+class SelectedChunkData(BaseModel):
+    selected_chunk_index: int
+    selected_chunk_response: str
+    selected_chunk_label: Optional[str] = None
+
+class SaveSelectedChunkRequest(BaseModel):
+    emr_type_id: str
+    selected_chunks: List[SelectedChunkData] 
