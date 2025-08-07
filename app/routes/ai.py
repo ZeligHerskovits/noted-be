@@ -431,11 +431,16 @@ async def analyze_emr_type(
     
     if total_chunks != processed_chunks:
         # Analysis is in progress - block anyone from starting new analysis
-      
+        if total_chunks and total_chunks > 0:
             progress = int((processed_chunks or 0) / total_chunks * 100)
             raise HTTPException(
                 status_code=409, 
                 detail=f"EMR analysis is already in progress ({progress}% complete). Please wait for it to complete."
+            )
+        else:
+            raise HTTPException(
+                status_code=409, 
+                detail="EMR analysis is already in progress. Please wait for it to complete."
             )
 
     try:
