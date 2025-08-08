@@ -498,7 +498,7 @@ def finalize_emr_type(
         raise HTTPException(status_code=404, detail="EMR type not found")
     
     # Check if current status is 'draft' or 'analyzed'
-    if emr_type.status in ["draft", "analyzed"]:
+    if emr_type.status in ["draft", "analyzed", "processing"]:
         raise HTTPException(
             status_code=400, 
             detail=f"Cannot finalize EMR type. Current status is '{emr_type.status}', but only 'generated' status can be finalized."

@@ -259,7 +259,7 @@ def analyze_emr_file_for_ai(
         raise HTTPException(status_code=404, detail="EMR type not found")
 
     # Check if EMR type has been analyzed before allowing generate response
-    if emr.status == 'draft':
+    if emr.status in ["draft", "processing"]:
         raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
 
     # Check if all results have been processed (no more "found" or "not found" statuses)
