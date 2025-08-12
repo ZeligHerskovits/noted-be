@@ -213,6 +213,7 @@ class EMRTypeResultInstructionsOnly(BaseModel):
 
 class UpdateResultStatusRequest(BaseModel):
     key: str
+    value: str
     status: str
 
 class SelectedChunkData(BaseModel):

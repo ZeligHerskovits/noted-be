@@ -209,13 +209,14 @@ def update_result_status(
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
-    """Update status for a specific EMR type result by key"""
+    """Update status for a specific EMR type result by key and value"""
     from ..models import EMRTypeResult
     
-    # Get the result by emr_type_id and key
+    # Get the result by emr_type_id and key and value
     result = db.query(EMRTypeResult).filter(
         EMRTypeResult.emr_type_id == emr_type_id,
-        EMRTypeResult.key == request.key
+        EMRTypeResult.key == request.key,
+        EMRTypeResult.value == request.value
     ).first()
     
     if not result:
@@ -239,7 +240,43 @@ def update_result_status(
     return {
         "message": "Status updated successfully",
         "key": request.key,
+        "value": request.value,
         "status": result.status
+    }
+
+@router.put("/{emr_type_id}/back-action")
+def back_action_emr_type(
+    emr_type_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
+    """
+    Check if there are any key-value results for this EMR type and update status accordingly.
+    If there are results, set status to 'analyzed', otherwise set to 'draft'.
+    """
+    # Get the EMR type
+    emr_type = get_emr_type(db, emr_type_id)
+    if not emr_type:
+        raise HTTPException(status_code=404, detail="EMR type not found")
+    
+    # Check if there are any results for this EMR type
+    results = get_emr_type_results_by_emr_type(db, emr_type_id)
+    
+    # Determine new status based on whether results exist
+    if results:
+        new_status = "analyzed"
+    else:
+        new_status = "draft"
+    
+    # Update the EMR type status
+    updated_emr_type = update_emr_type(
+        db=db,
+        emr_type_id=emr_type_id,
+        status=new_status
+    )
+    
+    return {
+        "message": f"EMR type status updated to '{new_status}'"
     }
 
 @router.put("/{emr_type_id}", response_model=EmrTypeResponse)
