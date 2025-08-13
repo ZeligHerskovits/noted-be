@@ -82,7 +82,7 @@ class CompanyUpdate(BaseModel):
     is_active: Optional[bool] = None
     # Add more fields as needed
 
-class PatientCreate(BaseModel):
+class ClientCreate(BaseModel):
     first_name: str
     last_name: str
     date_of_birth: date
@@ -93,7 +93,7 @@ class PatientCreate(BaseModel):
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[EmailStr] = None
 
-class PatientUpdate(BaseModel):
+class ClientUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -105,7 +105,7 @@ class PatientUpdate(BaseModel):
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[str] = None
 
-class PatientResponse(BaseModel):
+class ClientResponse(BaseModel):
     id: UUID
     first_name: str
     last_name: str

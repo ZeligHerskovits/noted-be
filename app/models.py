@@ -42,8 +42,8 @@ class Company(Base):
     created_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
-class Patient(Base):
-    __tablename__ = "patients"
+class Client(Base):
+    __tablename__ = "clients"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
