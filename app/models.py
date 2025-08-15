@@ -19,6 +19,7 @@ class User(Base):
     mobile_phone = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     user_type = Column(String(100), nullable=True)
+    session_instructions = Column(Text, nullable=True)
 
 class Otp(Base):
     __tablename__ = "otps"
@@ -91,5 +92,28 @@ class EMRTypeResult(Base):
     instructions = Column(Text, nullable=True)
     status = Column(String(100), nullable=True)
     label = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class Session(Base):
+    __tablename__ = "sessions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
+    emr_name = Column(Text, nullable=True)
+    client = Column(Text, nullable=True)
+    appt_date = Column(DateTime, nullable=True)
+    duration = Column(Text, nullable=True)
+    is_no_show = Column(Boolean, default=False, nullable=False)
+    no_show_action = Column(Text, nullable=True)
+    staff_providing_service = Column(Text, nullable=True)
+    program_name = Column(Text, nullable=True)
+    location_where_session_took_place = Column(Text, nullable=True)
+    service_facility_address = Column(Text, nullable=True)
+    delivered_off_site = Column(Boolean, default=False, nullable=False)
+    manual_instructions = Column(Text, nullable=True)
+    session_response = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 

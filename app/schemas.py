@@ -47,6 +47,7 @@ class UserResponse(BaseModel):
     mobile_phone: Optional[str] = None
     company: Optional[Any] = None
     user_type: Optional[str] = None
+    session_instructions: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -56,6 +57,7 @@ class UserUpdate(BaseModel):
     mobile_phone: Optional[str] = None
     user_type: Optional[str] = None
     is_active: Optional[bool] = None
+    session_instructions: Optional[str] = None  # FE sends 'session_instructions', we save as 'session_instructions'
     # Add more fields as needed
 
 class CompanyCreate(BaseModel):
@@ -223,4 +225,61 @@ class SelectedChunkData(BaseModel):
 
 class SaveSelectedChunkRequest(BaseModel):
     emr_type_id: str
-    selected_chunks: List[SelectedChunkData] 
+    selected_chunks: List[SelectedChunkData]
+
+# Session Schemas
+class SessionCreate(BaseModel):
+    client_id: UUID
+    emr_type_id: UUID
+    emr_name: Optional[str] = None
+    client: Optional[str] = None
+    appt_date: Optional[datetime] = None
+    duration: Optional[str] = None
+    is_no_show: bool = False
+    no_show_action: Optional[str] = None
+    staff_providing_service: Optional[str] = None
+    program_name: Optional[str] = None
+    location_where_session_took_place: Optional[str] = None
+    service_facility_address: Optional[str] = None
+    delivered_off_site: bool = False
+    manual_instructions: Optional[str] = None  # FE sends 'manual_instructions' directly
+
+class SessionUpdate(BaseModel):
+    client_id: Optional[UUID] = None
+    emr_type_id: Optional[UUID] = None
+    emr_name: Optional[str] = None
+    client: Optional[str] = None
+    appt_date: Optional[datetime] = None
+    duration: Optional[str] = None
+    is_no_show: Optional[bool] = None
+    no_show_action: Optional[str] = None
+    staff_providing_service: Optional[str] = None
+    program_name: Optional[str] = None
+    location_where_session_took_place: Optional[str] = None
+    service_facility_address: Optional[str] = None
+    delivered_off_site: Optional[bool] = None
+    manual_instructions: Optional[str] = None  # FE sends 'manual_instructions' directly
+
+class SessionResponse(BaseModel):
+    id: UUID
+    client_id: UUID
+    user_id: UUID
+    emr_type_id: UUID
+    emr_name: Optional[str] = None
+    client: Optional[str] = None
+    appt_date: Optional[datetime] = None
+    duration: Optional[str] = None
+    is_no_show: bool
+    no_show_action: Optional[str] = None
+    staff_providing_service: Optional[str] = None
+    program_name: Optional[str] = None
+    location_where_session_took_place: Optional[str] = None
+    service_facility_address: Optional[str] = None
+    delivered_off_site: bool
+    created_at: datetime
+    updated_at: datetime
+    manual_instructions: Optional[str] = None
+    session_response: Optional[str] = None
+    
+    class Config:
+        from_attributes = True 

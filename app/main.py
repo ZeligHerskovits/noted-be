@@ -14,6 +14,7 @@ from .routes import auth, users, Clients
 from .routes import companies
 from .routes import emr_types
 from .routes import ai
+from .routes import sessions
 from .models import Base
 from .db import engine
 
@@ -93,6 +94,7 @@ app.add_middleware(LargeFileUploadMiddleware)
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(Clients.router, prefix="/api/v1", tags=["Clients"])
+app.include_router(sessions.sessions_router, prefix="/api/v1", tags=["Sessions"])
 app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
 app.include_router(emr_types.router, prefix="/api/v1", tags=["EMR Types"])
 app.include_router(emr_types.fields_router, prefix="/api/v1", tags=["EMR Type Fields"])

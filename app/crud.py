@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult
+from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -245,5 +245,65 @@ def delete_all_emr_type_results_by_emr_type(db: Session, emr_type_id: UUID):
     results = db.query(EMRTypeResult).filter(EMRTypeResult.emr_type_id == emr_type_id).all()
     for result in results:
         db.delete(result)
+    db.commit()
+    return True
+
+# Session CRUD operations
+def create_session(db: Session, user_id: UUID, **session_data):
+    """Create a new session"""
+    # Get the EMR type name from emr_type_id
+    emr_type_id = session_data.get('emr_type_id')
+    if emr_type_id:
+        emr_type = db.query(EmrType).filter(EmrType.id == emr_type_id).first()
+        if emr_type:
+            session_data['emr_name'] = emr_type.name
+    
+    session = SessionModel(user_id=user_id, **session_data)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+def get_session(db: Session, session_id: UUID):
+    """Get session by ID"""
+    return db.query(SessionModel).filter(SessionModel.id == session_id).first()
+
+def get_sessions_by_user(db: Session, user_id: UUID):
+    """Get all sessions for a specific user"""
+    return db.query(SessionModel).filter(SessionModel.user_id == user_id).all()
+
+def get_all_sessions(db: Session):
+    """Get all sessions (for super admin)"""
+    return db.query(SessionModel).all()
+
+def get_sessions_by_emr_type(db: Session, emr_type_id: UUID):
+    """Get all sessions for a specific EMR type"""
+    return db.query(SessionModel).filter(SessionModel.emr_type_id == emr_type_id).all()
+
+def get_sessions_by_client(db: Session, client_id: UUID):
+    """Get all sessions for a specific client"""
+    return db.query(SessionModel).filter(SessionModel.client_id == client_id).all()
+
+def update_session(db: Session, session_id: UUID, **session_data):
+    """Update a session"""
+    session = get_session(db, session_id)
+    if not session:
+        return None
+    
+    for key, value in session_data.items():
+        if value is not None:
+            setattr(session, key, value)
+    
+    db.commit()
+    db.refresh(session)
+    return session
+
+def delete_session(db: Session, session_id: UUID):
+    """Delete a session"""
+    session = get_session(db, session_id)
+    if not session:
+        return False
+    
+    db.delete(session)
     db.commit()
     return True 

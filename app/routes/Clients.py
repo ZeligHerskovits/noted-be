@@ -21,6 +21,30 @@ def get_db():
     finally:
         db.close()
 
+@router.get("/{Client_id}", response_model=ClientResponse)
+def get_Client(
+    Client_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+):
+    print(f"GET /api/Clients/{Client_id} called")
+    try:
+        # First try to find Client by ID only
+        db_Client = db.query(Client).filter(Client.id == Client_id).first()
+        if not db_Client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Check if user has permission to view this Client
+        if current_user.role_id != 3:  # Not super_admin
+            if db_Client.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to view this Client")
+        
+        return db_Client
+    except Exception as e:
+        logger.error(f"Error fetching Client: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to fetch Client")
+
 @router.get("", response_model=List[ClientResponse])
 def list_Clients(
     db: Session = Depends(get_db),
@@ -40,20 +64,20 @@ def list_Clients(
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
 def create_Client(
-    Client: ClientCreate,
+    client_data: ClientCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"POST /api/Clients called with: {Client}")
+    print(f"POST /api/Clients called with: {client_data}")
     try:
-        Client_data = Client.dict(exclude={"user_id"})  # Remove user_id from request
-        Client_data["user_id"] = current_user.id  # Assign from token/session
+        client_dict = client_data.dict(exclude={"user_id"})  # Remove user_id from request
+        client_dict["user_id"] = current_user.id  # Assign from token/session
         # Use date_of_birth from frontend (no hardcoding)
-        new_Client = Client(**Client_data)
-        db.add(new_Client)
+        new_client = Client(**client_dict)
+        db.add(new_client)
         db.commit()
-        db.refresh(new_Client)
-        return new_Client
+        db.refresh(new_client)
+        return new_client
     except Exception as e:
         logger.error(f"Error creating Client: {e}")
         traceback.print_exc()

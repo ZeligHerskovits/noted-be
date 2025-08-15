@@ -315,6 +315,7 @@ def get_me(request: Request, db: Session = Depends(get_db), current_user = Depen
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role.name if role else None
     user_dict['is_active'] = user.is_active
+    user_dict['session_instructions'] = user.session_instructions
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     return user_dict
 
@@ -340,6 +341,7 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role.name if role else None
     user_dict['is_active'] = user.is_active
+    user_dict['session_instructions'] = user.session_instructions
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     return user_dict
 
