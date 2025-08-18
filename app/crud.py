@@ -77,6 +77,11 @@ def generate_and_store_otp(db: Session, user: User, expires_minutes: int = 10):
     db.refresh(otp)
     return otp_code
 
+def get_all_clients(db: Session):
+    clients = db.query(Client).all()
+   
+    return clients
+
 def get_all_users_with_roles(db: Session):
     users = db.query(User).all()
     companies = {c.id: c.name for c in db.query(Company).all()}

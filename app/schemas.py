@@ -267,6 +267,7 @@ class SessionResponse(BaseModel):
     emr_type_id: UUID
     emr_name: Optional[str] = None
     client: Optional[str] = None
+    client_id_name: Optional[str] = None  # Virtual field for frontend - not in DB
     appt_date: Optional[datetime] = None
     duration: Optional[str] = None
     is_no_show: bool

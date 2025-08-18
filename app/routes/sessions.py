@@ -13,7 +13,7 @@ import json
 import requests
 import os
 from openai import OpenAI
-from ..crud import create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session
+from ..crud import create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session, get_all_clients
 
 sessions_router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
@@ -34,6 +34,9 @@ def get_session_by_id(
 ):
     print(f"GET /api/v1/sessions/{session_id} called")
     try:
+
+        clients = get_all_clients(db)
+
         session = get_session(db, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -43,6 +46,11 @@ def get_session_by_id(
         #     if session.user_id != current_user.id:
         #         raise HTTPException(status_code=403, detail="Not authorized to view this session")
         
+        # Add client name to the single session
+        client = next((c for c in clients if c.id == session.client_id), None)
+        if client:
+            session.client_id_name = f"{client.first_name} {client.last_name}"
+
         return session
     except Exception as e:
         logger.error(f"Error fetching session: {e}")
@@ -59,6 +67,8 @@ def list_sessions(
     try:
         print(f"GET /api/v1/sessions called with emr_type_id: {emr_type_id}, client_id: {client_id}")
         
+        clients = get_all_clients(db)
+
         # Step 1: Get sessions based on user role
         if current_user.role_id == 3:  # super_admin
             sessions = get_all_sessions(db)
@@ -71,6 +81,12 @@ def list_sessions(
         elif client_id:
             sessions = [s for s in sessions if s.client_id == client_id]
         
+        # Step 3: Add client name to each session while keeping original client_id
+        for session in sessions:
+            client = next((c for c in clients if c.id == session.client_id), None)
+            if client:
+                session.client_id_name = f"{client.first_name} {client.last_name}"
+
         return sessions
     except Exception as e:
         logger.error(f"Error fetching sessions: {e}")
