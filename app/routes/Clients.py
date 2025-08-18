@@ -84,8 +84,8 @@ def create_Client(
         raise HTTPException(status_code=500, detail="Failed to create Client")
 
 @router.put("/{Client_id}", response_model=ClientResponse)
-def update_Client(Client_id: UUID, Client: ClientUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
-    print(f"PUT /api/Clients/{Client_id} called with: {Client}")
+def update_Client(Client_id: UUID, client_update: ClientUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
+    print(f"PUT /api/Clients/{Client_id} called with: {client_update}")
     try:
         # First try to find Client by ID only
         db_Client = db.query(Client).filter(Client.id == Client_id).first()
@@ -98,7 +98,7 @@ def update_Client(Client_id: UUID, Client: ClientUpdate, db: Session = Depends(g
                 raise HTTPException(status_code=403, detail="Not authorized to update this Client")
         
         # Update the Client
-        for key, value in Client.dict(exclude_unset=True).items():
+        for key, value in client_update.dict(exclude_unset=True).items():
             setattr(db_Client, key, value)
         db.commit()
         db.refresh(db_Client)
