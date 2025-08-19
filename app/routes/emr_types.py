@@ -78,6 +78,7 @@ def with_signed_urls(files):
         signed_files.append(f)
     return signed_files
 
+# Create a new EMR type
 @router.post("/", response_model=EmrTypeResponse)
 async def create_emr_type_with_files(
     name: str = Form(...),
@@ -108,6 +109,7 @@ async def create_emr_type_with_files(
     )
     return emr_type
 
+# Get all EMR types
 @router.get("/", response_model=List[EmrTypeResponse])
 def get_all_emr_types_endpoint(
     db: Session = Depends(get_db),
@@ -124,6 +126,7 @@ def get_all_emr_types_endpoint(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching EMR types: {str(e)}")
 
+# Get a specific EMR type by ID
 @router.get("/{emr_type_id}")
 def get_emr_type_endpoint(
     emr_type_id: UUID, 
@@ -150,7 +153,7 @@ def get_emr_type_endpoint(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching EMR type: {str(e)}")
 
-# EMR Type Results - GET endpoint for frontend display
+# EMR Type Results, its the data you see under Analysis Results - GET endpoint for frontend display
 @router.get("/{emr_type_id}/results")
 def get_emr_type_results(
     emr_type_id: UUID, 
@@ -167,7 +170,7 @@ def get_emr_type_results(
     
     return [EMRTypeResultResponse.from_orm(result) for result in results]
 
-# EMR Type Results - Update instructions endpoint (MUST BE BEFORE GENERAL PUT)
+# EMR Type Results, its the data you see under Analysis Results - Update instructions endpoint (MUST BE BEFORE GENERAL PUT)
 @router.put("/{emr_type_id}/instructions")
 def update_result_instructions(
     emr_type_id: UUID,
@@ -201,7 +204,7 @@ def update_result_instructions(
         "message": "Instructions updated successfully"
     }
 
-# EMR Type Results - Update status endpoint
+# EMR Type Results, its the data you see under Analysis Results - Update status endpoint
 @router.put("/{emr_type_id}/status")
 def update_result_status(
     emr_type_id: UUID,
@@ -244,6 +247,7 @@ def update_result_status(
         "status": result.status
     }
 
+# This get called when pressing the back button in the EMR Type Details
 @router.put("/{emr_type_id}/back-action")
 def back_action_emr_type(
     emr_type_id: UUID, 
@@ -269,7 +273,7 @@ def back_action_emr_type(
         new_status = "draft"
     
     # Update the EMR type status
-    updated_emr_type = update_emr_type(
+    update_emr_type(
         db=db,
         emr_type_id=emr_type_id,
         status=new_status
@@ -279,6 +283,7 @@ def back_action_emr_type(
         "message": f"EMR type status updated to '{new_status}'"
     }
 
+# Update a EMR type
 @router.put("/{emr_type_id}", response_model=EmrTypeResponse)
 async def update_emr_type_with_files(
     emr_type_id: UUID,
@@ -338,6 +343,7 @@ async def update_emr_type_with_files(
         updated_emr_type.files = with_signed_urls(updated_emr_type.files)
     return updated_emr_type
 
+# Delete an EMR type
 @router.delete("/{emr_type_id}")
 def delete_emr_type_endpoint(
     emr_type_id: UUID, 
@@ -356,6 +362,9 @@ def delete_emr_type_endpoint(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error deleting EMR type: {str(e)}")
 
+#------------------------------------------------------------------------------------------------------
+
+# This is not getting called as of Augest 20 from frontend
 @router.post("/{emr_type_id}/upload-files")
 def upload_files_to_emr_type(
     emr_type_id: UUID,
@@ -399,6 +408,7 @@ def upload_files_to_emr_type(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error uploading files: {str(e)}")
 
+# This is not getting called as of Augest 20 from frontend
 @router.get("/{emr_type_id}/files")
 def get_emr_type_files(
     emr_type_id: UUID, 
@@ -418,6 +428,7 @@ def get_emr_type_files(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching files: {str(e)}")
 
+# This is not getting called as of Augest 20 from frontend
 @router.delete("/{emr_type_id}/files/{file_index}")
 def remove_file_from_emr_type(
     emr_type_id: UUID, 
@@ -457,6 +468,7 @@ def remove_file_from_emr_type(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error removing file: {str(e)}")
 
+# This is not getting called as of Augest 20 from frontend
 @router.put("/{emr_type_id}/files")
 def replace_all_files_in_emr_type(
     emr_type_id: UUID,
@@ -490,6 +502,7 @@ def replace_all_files_in_emr_type(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error replacing files: {str(e)}")
 
+# This is not getting called as of Augest 20 from frontend
 @router.delete("/{emr_type_id}/files")
 def remove_all_files_from_emr_type(
     emr_type_id: UUID, 
@@ -519,6 +532,9 @@ def remove_all_files_from_emr_type(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}")
 
+#------------------------------------------------------------------------------------------------------
+
+# Finalize an EMR type
 @router.put("/{emr_type_id}/finalize")
 def finalize_emr_type(
     emr_type_id: UUID, 

@@ -75,7 +75,7 @@ def list_sessions(
         else:  # admin or standard
             sessions = get_sessions_by_user(db, current_user.id)
         
-        # Step 2: Apply filters to the sessions
+        # Step 2: Apply filters to the sessions, as of Augest 20 we not using that Step 2 from frontend
         if emr_type_id:
             sessions = [s for s in sessions if s.emr_type_id == emr_type_id]
         elif client_id:
@@ -184,11 +184,11 @@ def generate_session(
         #     if session.user_id != current_user.id:
         #         raise HTTPException(status_code=403, detail="Not authorized to access this session")
         
-        # Get instructions from session
-        manual_instructions = session.manual_instructions if session.manual_instructions else ""
-        
         # Get instructions from user
         session_instructions = current_user.session_instructions if hasattr(current_user, 'session_instructions') and current_user.session_instructions else ""
+
+        # Get instructions from that session
+        manual_instructions = session.manual_instructions if session.manual_instructions else ""
         
         # Build combined instructions
         combined_instructions = []

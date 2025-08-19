@@ -42,13 +42,12 @@ class SaveResponseRequest(BaseModel):
     emr_type_id: str
     response: str
 
-
-
 class DeleteResultRequest(BaseModel):
     emr_type_id: str
     key: str
     value: str
 
+# create_chunks function to split HTML content into chunks its should fit within the token limit
 def create_chunks(html_content: str, chunk_size: int = 120000, overlap: int = 6000) -> list:
     """Split HTML content into overlapping chunks with smart chunking"""
     chunks = []
@@ -140,7 +139,6 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
         print(f"=== DEBUG: Error processing chunk: {str(e)} ===")
         return ""
 
-# process_chunk_sync function removed - using async version instead
 
 async def process_chunks_async(chunks: list, prompt_template: str, field_instructions: str, emr_type_id: str = None, db: Session = None) -> list:
     """Process all chunks asynchronously - MUCH FASTER than ThreadPoolExecutor"""
@@ -246,7 +244,7 @@ def save_results_to_db_with_label(results: dict, emr_type_id: str, db: Session, 
             print(f"=== DEBUG: Created {clean_key}: {value} (status: {status}) (label: {label}) ===")
 
 
-#Genarate Response button from fe is calling that API
+# Genarate Response button from fe is calling that API
 @router.post("/analyze-emr-file/")
 def analyze_emr_file_for_ai(
     req: GenerateRequest,
@@ -872,7 +870,7 @@ async def save_selected_chunk(
         "chunks_processed": len(selected_chunks)
     }
 
-
+# Get current analysis progress for a specific EMR type, get called every few seconds from the FE while analyzing
 @router.get("/analyze-progress/{emr_type_id}")
 async def get_analyze_progress(
     emr_type_id: str,
@@ -921,6 +919,7 @@ async def get_analyze_progress(
         print(f"=== DEBUG: Error getting progress: {str(e)} ===")
         raise HTTPException(status_code=500, detail=f"Error getting progress: {str(e)}")
 
+# Delete a specific result row from the database emr_type_results table
 @router.delete("/delete-result/")
 async def delete_result(
     req: DeleteResultRequest,
