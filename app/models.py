@@ -79,6 +79,8 @@ class EMRTypeField(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String(255), nullable=False)
     type = Column(String(100), nullable=False)
+    analyzable = Column(Text, nullable=True)
+    api_name = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -98,22 +100,26 @@ class EMRTypeResult(Base):
 class Session(Base):
     __tablename__ = "sessions"
     
+    # Static fields (always the same)
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
     emr_name = Column(Text, nullable=True)
-    client = Column(Text, nullable=True)
-    appt_date = Column(DateTime, nullable=True)
-    duration = Column(Text, nullable=True)
-    is_no_show = Column(Boolean, default=False, nullable=False)
-    no_show_action = Column(Text, nullable=True)
-    staff_providing_service = Column(Text, nullable=True)
-    program_name = Column(Text, nullable=True)
-    location_where_session_took_place = Column(Text, nullable=True)
-    service_facility_address = Column(Text, nullable=True)
-    delivered_off_site = Column(Boolean, default=False, nullable=False)
     manual_instructions = Column(Text, nullable=True)
     session_response = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Dynamic fields will be added automatically based on emr_type_fields
+    # These are handled by your migration system
+    # SQLAlchemy will automatically read all columns from the database 
+
+class ManualField(Base):
+    __tablename__ = "manual_fields"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    name = Column(Text, nullable=False)
+    emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
+    created = Column(DateTime, server_default=func.now())
+    updated = Column(DateTime, server_default=func.now(), onupdate=func.now()) 

@@ -19,16 +19,20 @@ from ..schemas import (
     EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse,
     EMRTypeResultCreate, EMRTypeResultResponse, EmrTypeResponseOnly,
     UpdateResultInstructionsRequest, EMRTypeResultInstructionsOnly,
-    UpdateResultStatusRequest
+    UpdateResultStatusRequest, ManualFieldCreate, ManualFieldUpdate, ManualFieldResponse
 )
 from ..crud import (
     create_emr_type, get_emr_type, get_all_emr_types, 
     update_emr_type, delete_emr_type,
-    create_emr_type_result, get_emr_type_results_by_emr_type, delete_all_emr_type_results_by_emr_type
+    create_emr_type_result, get_emr_type_results_by_emr_type, get_all_emr_type_results, delete_all_emr_type_results_by_emr_type,
+    create_emr_type_field, get_emr_type_field, get_all_emr_type_fields, update_emr_type_field, delete_emr_type_field,
+    create_manual_field, get_manual_field, get_all_manual_fields, get_manual_fields_by_emr_type, update_manual_field, delete_manual_field
 )
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
 fields_router = APIRouter(prefix="/emr-types-fields", tags=["EMR Type Fields"])
+manual_fields_router = APIRouter(prefix="/manual-fields", tags=["Manual Fields"])
+results_router = APIRouter(prefix="/results", tags=["EMR Type Results"])
 
 s3 = boto3.client(
     "s3",
@@ -569,52 +573,7 @@ def finalize_emr_type(
         "emr_type": updated_emr_type
     }
 
-# EMR Type Fields CRUD operations
-def create_emr_type_field(db: Session, name: str, type: str):
-    """Create a new EMR type field"""
-    from ..models import EMRTypeField
-    db_field = EMRTypeField(name=name, type=type)
-    db.add(db_field)
-    db.commit()
-    db.refresh(db_field)
-    return db_field
 
-def get_emr_type_field(db: Session, field_id: UUID):
-    """Get EMR type field by ID"""
-    from ..models import EMRTypeField
-    return db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
-
-def get_all_emr_type_fields(db: Session):
-    """Get all EMR type fields"""
-    from ..models import EMRTypeField
-    return db.query(EMRTypeField).all()
-
-def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None):
-    """Update EMR type field"""
-    from ..models import EMRTypeField
-    db_field = db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
-    if not db_field:
-        return None
-    
-    if name is not None:
-        db_field.name = name
-    if type is not None:
-        db_field.type = type
-    
-    db.commit()
-    db.refresh(db_field)
-    return db_field
-
-def delete_emr_type_field(db: Session, field_id: UUID):
-    """Delete EMR type field"""
-    from ..models import EMRTypeField
-    db_field = db.query(EMRTypeField).filter(EMRTypeField.id == field_id).first()
-    if not db_field:
-        return False
-    
-    db.delete(db_field)
-    db.commit()
-    return True
 
 # EMR Type Fields API Endpoints
 @fields_router.post("/", response_model=EMRTypeFieldResponse)
@@ -624,8 +583,11 @@ def create_field(
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Create a new EMR type field"""
-    db_field = create_emr_type_field(db, name=field.name, type=field.type)
-    return db_field
+    try:
+        db_field = create_emr_type_field(db, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name)
+        return db_field
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @fields_router.get("/", response_model=List[EMRTypeFieldResponse])
 def get_fields(
@@ -655,10 +617,13 @@ def update_field(
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """Update EMR type field"""
-    db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type)
-    if not db_field:
-        raise HTTPException(status_code=404, detail="Field not found")
-    return db_field
+    try:
+        db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name)
+        if not db_field:
+            raise HTTPException(status_code=404, detail="Field not found")
+        return db_field
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @fields_router.delete("/{field_id}")
 def delete_field(
@@ -670,4 +635,58 @@ def delete_field(
     success = delete_emr_type_field(db, field_id)
     if not success:
         raise HTTPException(status_code=404, detail="Field not found")
-    return {"message": "Field deleted successfully"} 
+    return {"message": "Field deleted successfully"}
+
+# Manual Fields API Endpoints
+@manual_fields_router.post("/", response_model=ManualFieldResponse)
+def create_manual_field_endpoint(
+    field: ManualFieldCreate, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+):
+    """Create a new manual field"""
+    db_field = create_manual_field(db, name=field.name, emr_type_id=field.emr_type_id)
+    return db_field
+
+@manual_fields_router.get("/emr-type/{emr_type_id}", response_model=List[ManualFieldResponse])
+def get_manual_fields_by_emr_type_endpoint(
+    emr_type_id: UUID,
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+):
+    """Get all manual fields for a specific EMR type"""
+    return get_manual_fields_by_emr_type(db, emr_type_id)
+
+@manual_fields_router.put("/{field_id}", response_model=ManualFieldResponse)
+def update_manual_field_endpoint(
+    field_id: UUID, 
+    field: ManualFieldUpdate, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+):
+    """Update manual field"""
+    db_field = update_manual_field(db, field_id, name=field.name)
+    if not db_field:
+        raise HTTPException(status_code=404, detail="Manual field not found")
+    return db_field
+
+@manual_fields_router.delete("/{field_id}")
+def delete_manual_field_endpoint(
+    field_id: UUID, 
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+):
+    """Delete manual field"""
+    success = delete_manual_field(db, field_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Manual field not found")
+    return {"message": "Manual field deleted successfully"}
+
+# EMR Type Results API Endpoints
+@results_router.get("/", response_model=List[EMRTypeResultResponse])
+def get_all_emr_type_results_endpoint(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+):
+    """Get all EMR type results"""
+    return get_all_emr_type_results(db) 

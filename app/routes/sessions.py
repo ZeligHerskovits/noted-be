@@ -26,7 +26,7 @@ def get_db():
     finally:
         db.close()
 
-@sessions_router.get("/{session_id}", response_model=SessionResponse)
+@sessions_router.get("/{session_id}")
 def get_session_by_id(
     session_id: UUID,
     db: Session = Depends(get_db),
@@ -51,13 +51,21 @@ def get_session_by_id(
         if client:
             session.client_id_name = f"{client.first_name} {client.last_name}"
 
-        return session
+        # Convert session object to dict to include all dynamic fields
+        session_dict = {}
+        for attr in dir(session):
+            if not attr.startswith('_'):
+                value = getattr(session, attr)
+                if not callable(value):
+                    session_dict[attr] = value
+        
+        return session_dict
     except Exception as e:
         logger.error(f"Error fetching session: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch session")
 
-@sessions_router.get("", response_model=List[SessionResponse])
+@sessions_router.get("")
 def list_sessions(
     emr_type_id: Optional[UUID] = None,
     client_id: Optional[UUID] = None,
@@ -87,7 +95,18 @@ def list_sessions(
             if client:
                 session.client_id_name = f"{client.first_name} {client.last_name}"
 
-        return sessions
+        # Convert session objects to dicts to include all dynamic fields
+        sessions_list = []
+        for session in sessions:
+            session_dict = {}
+            for attr in dir(session):
+                if not attr.startswith('_'):
+                    value = getattr(session, attr)
+                    if not callable(value):
+                        session_dict[attr] = value
+            sessions_list.append(session_dict)
+
+        return sessions_list
     except Exception as e:
         logger.error(f"Error fetching sessions: {e}")
         traceback.print_exc()

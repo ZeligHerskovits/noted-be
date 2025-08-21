@@ -168,15 +168,21 @@ class EmrTypeResponse(BaseModel):
 class EMRTypeFieldCreate(BaseModel):
     name: str
     type: str
+    analyzable: Optional[str] = None
+    api_name: Optional[str] = None
 
 class EMRTypeFieldUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
+    analyzable: Optional[str] = None
+    api_name: Optional[str] = None
 
 class EMRTypeFieldResponse(BaseModel):
     id: UUID
     name: str
     type: str
+    analyzable: Optional[str] = None
+    api_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -191,6 +197,8 @@ class EMRTypeResultCreate(BaseModel):
     label: Optional[str] = None
 
 class EMRTypeResultResponse(BaseModel):
+    id: UUID
+    emr_type_id: UUID
     key: str
     value: Optional[str] = None
     instructions: Optional[str] = None
@@ -229,58 +237,70 @@ class SaveSelectedChunkRequest(BaseModel):
 
 # Session Schemas
 class SessionCreate(BaseModel):
+    # Static fields (always required)
     client_id: UUID
     emr_type_id: UUID
-    emr_name: Optional[str] = None
-    client: Optional[str] = None
-    appt_date: Optional[datetime] = None
-    duration: Optional[str] = None
-    is_no_show: bool = False
-    no_show_action: Optional[str] = None
-    staff_providing_service: Optional[str] = None
-    program_name: Optional[str] = None
-    location_where_session_took_place: Optional[str] = None
-    service_facility_address: Optional[str] = None
-    delivered_off_site: bool = False
-    manual_instructions: Optional[str] = None  # FE sends 'manual_instructions' directly
+    manual_instructions: Optional[str] = None
+    
+    # Dynamic fields (based on emr_type_fields)
+    # These will be handled dynamically based on the EMR type
+    # Frontend can send any field names, they'll be stored as dynamic columns
+    
+    class Config:
+        from_attributes = True
+        # Allow extra fields for dynamic columns
+        extra = "allow"
 
 class SessionUpdate(BaseModel):
+    # Static fields (optional for updates)
     client_id: Optional[UUID] = None
     emr_type_id: Optional[UUID] = None
-    emr_name: Optional[str] = None
-    client: Optional[str] = None
-    appt_date: Optional[datetime] = None
-    duration: Optional[str] = None
-    is_no_show: Optional[bool] = None
-    no_show_action: Optional[str] = None
-    staff_providing_service: Optional[str] = None
-    program_name: Optional[str] = None
-    location_where_session_took_place: Optional[str] = None
-    service_facility_address: Optional[str] = None
-    delivered_off_site: Optional[bool] = None
-    manual_instructions: Optional[str] = None  # FE sends 'manual_instructions' directly
+    manual_instructions: Optional[str] = None
+    
+    # Dynamic fields (based on emr_type_fields)
+    # These will be handled dynamically based on the EMR type
+    
+    class Config:
+        from_attributes = True
+        # Allow extra fields for dynamic columns
+        extra = "allow"
+
+
 
 class SessionResponse(BaseModel):
+    # Static fields (always present)
     id: UUID
     client_id: UUID
     user_id: UUID
     emr_type_id: UUID
     emr_name: Optional[str] = None
-    client: Optional[str] = None
     client_id_name: Optional[str] = None  # Virtual field for frontend - not in DB
-    appt_date: Optional[datetime] = None
-    duration: Optional[str] = None
-    is_no_show: bool
-    no_show_action: Optional[str] = None
-    staff_providing_service: Optional[str] = None
-    program_name: Optional[str] = None
-    location_where_session_took_place: Optional[str] = None
-    service_facility_address: Optional[str] = None
-    delivered_off_site: bool
     created_at: datetime
     updated_at: datetime
     manual_instructions: Optional[str] = None
     session_response: Optional[str] = None
+    
+    # Dynamic fields will be added automatically based on emr_type_fields
+    
+    class Config:
+        from_attributes = True
+        # Allow extra fields for dynamic columns
+        extra = "allow"
+
+# Manual Field Schemas
+class ManualFieldCreate(BaseModel):
+    name: str
+    emr_type_id: UUID
+
+class ManualFieldUpdate(BaseModel):
+    name: Optional[str] = None
+
+class ManualFieldResponse(BaseModel):
+    id: UUID
+    name: str
+    emr_type_id: UUID
+    created: datetime
+    updated: datetime
     
     class Config:
         from_attributes = True 

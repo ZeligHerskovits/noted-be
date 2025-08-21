@@ -62,6 +62,51 @@ print("S3_BUCKET_NAME:", os.getenv("S3_BUCKET_NAME"))
 print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY")[:10] + "..." if os.getenv("OPENAI_API_KEY") else "NOT SET")
 print("=== END DEBUG ===")
 
+# Auto-sync migrations on startup
+def auto_sync_migrations():
+    """Auto-sync migrations from git on startup"""
+    try:
+        import subprocess
+        import os
+        
+        # Only run on local development (not on server)
+        if os.getenv("ENV") == "development":
+            print("🔄 Auto-syncing migrations from git...")
+            
+            # Pull latest changes from git
+            result = subprocess.run(
+                ['git', 'pull', 'origin', 'dev'], 
+                cwd=os.getcwd(), 
+                capture_output=True, 
+                text=True
+            )
+            if result.returncode == 0:
+                print("✅ Successfully pulled latest changes from git")
+            else:
+                print(f"⚠️ Could not pull from git: {result.stderr}")
+            
+            # Apply any new migrations
+            result = subprocess.run(
+                ['python', '-m', 'alembic', 'upgrade', 'head'], 
+                cwd=os.getcwd(), 
+                capture_output=True, 
+                text=True
+            )
+            if result.returncode == 0:
+                print("✅ Successfully applied migrations")
+            else:
+                print(f"⚠️ Could not apply migrations: {result.stderr}")
+                
+            print("🔄 Auto-sync completed")
+        else:
+            print("🔄 Skipping auto-sync (not in development mode)")
+            
+    except Exception as e:
+        print(f"⚠️ Auto-sync failed: {e}")
+
+# Run auto-sync on startup
+auto_sync_migrations()
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
@@ -98,6 +143,8 @@ app.include_router(sessions.sessions_router, prefix="/api/v1", tags=["Sessions"]
 app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
 app.include_router(emr_types.router, prefix="/api/v1", tags=["EMR Types"])
 app.include_router(emr_types.fields_router, prefix="/api/v1", tags=["EMR Type Fields"])
+app.include_router(emr_types.manual_fields_router, prefix="/api/v1", tags=["Manual Fields"])
+app.include_router(emr_types.results_router, prefix="/api/v1", tags=["EMR Type Results"])
 app.include_router(ai.router, prefix="/api/v1", tags=["AI"])
 
 # Root endpoint to test if the API is running

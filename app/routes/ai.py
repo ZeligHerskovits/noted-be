@@ -10,7 +10,7 @@ from ..db import get_db
 from ..crud import (
     get_emr_type, update_emr_type, get_all_emr_type_fields,
     create_emr_type_result, delete_all_emr_type_results_by_emr_type,
-    get_emr_type_results_by_emr_type
+    get_emr_type_results_by_emr_type, get_manual_fields_by_emr_type
 )
 import boto3
 from pydantic import BaseModel
@@ -515,14 +515,21 @@ async def analyze_emr_type(
         def normalize_for_comparison(name):
             return name.lower().replace(' ', '').replace('-', '').replace('_', '')
 
-        missing_fields = [field.name for field in all_fields
-                         if normalize_for_comparison(field.name) not in
+        missing_fields = [field.name for field in all_fields if field.analyzable != "not for analyzing" 
+                         and normalize_for_comparison(field.name) not in
                          [normalize_for_comparison(name) for name in existing_field_names]]
 
         if missing_fields:
             print(f"=== DEBUG: Found {len(missing_fields)} missing fields: {missing_fields} ===")
             field_instructions = "\n".join([f"- {field_name}" for field_name in missing_fields])
             custom_instructions.append(f"Additional fields to extract:\n{field_instructions}")
+
+        # 4. Fourth append: Manual fields from manual_fields table for this EMR type
+        manual_fields = get_manual_fields_by_emr_type(db, emr_type_id)
+        if manual_fields:
+            print(f"=== DEBUG: Found {len(manual_fields)} manual fields: {[field.name for field in manual_fields]} ===")
+            manual_field_instructions = "\n".join([f"- {field.name}" for field in manual_fields])
+            custom_instructions.append(f"Additional fields to extract:\n{manual_field_instructions}")
 
         # Combine all instructions into one big instruction
         combined_instructions = "\n".join(custom_instructions)
