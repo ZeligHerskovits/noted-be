@@ -3,6 +3,7 @@ from ..routes.auth import get_current_user_with_role
 import openai
 import os
 import re
+import json
 import asyncio
 # ThreadPoolExecutor no longer needed - using async instead
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from ..crud import (
     get_emr_type_results_by_emr_type, get_manual_fields_by_emr_type
 )
 import boto3
+import re
 from pydantic import BaseModel
 import urllib.parse
 from dotenv import load_dotenv
@@ -21,6 +23,8 @@ from bs4 import BeautifulSoup
 from ..models import EMRTypeResult
 from ..schemas import SaveSelectedChunkRequest
 load_dotenv()
+
+
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -48,6 +52,51 @@ class DeleteResultRequest(BaseModel):
     value: str
 
 # create_chunks function to split HTML content into chunks its should fit within the token limit
+def clean_ai_response(response: str) -> str:
+    """Clean and validate AI response to ensure valid JSON"""
+    if not response or not response.strip():
+        return "{}"
+    
+    # Try to find JSON content in the response
+    import re
+    import json
+    
+    # First, try to extract JSON from markdown code blocks (most common)
+    code_block_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+    code_matches = re.findall(code_block_pattern, response, re.DOTALL)
+    
+    for json_str in code_matches:
+        try:
+            parsed = json.loads(json_str)
+            return json.dumps(parsed, indent=2)
+        except json.JSONDecodeError:
+            continue
+    
+    # If no code blocks, look for JSON objects in the response
+    # Try to find the largest JSON object (most likely to be the complete response)
+    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+    json_matches = re.findall(json_pattern, response, re.DOTALL)
+    
+    largest_json = None
+    largest_size = 0
+    
+    for json_str in json_matches:
+        try:
+            parsed = json.loads(json_str)
+            # Check if this is a larger JSON object (more fields)
+            if isinstance(parsed, dict) and len(parsed) > largest_size:
+                largest_json = parsed
+                largest_size = len(parsed)
+        except json.JSONDecodeError:
+            continue
+    
+    if largest_json:
+        return json.dumps(largest_json, indent=2)
+    
+    # If still no valid JSON, return empty object
+    return "{}"
+
+
 def create_chunks(html_content: str, chunk_size: int = 120000, overlap: int = 6000) -> list:
     """Split HTML content into overlapping chunks with smart chunking"""
     chunks = []
@@ -110,12 +159,26 @@ def create_chunks(html_content: str, chunk_size: int = 120000, overlap: int = 60
     return chunks
 
 
-async def process_chunk_async(chunk: str, prompt_template: str, field_instructions: str) -> str:
+async def process_chunk_async(chunk: str, prompt_template: str, field_instructions: str = None, field_names_str: str = None, emr_instructions: str = None) -> str:
     """Process a single chunk asynchronously - FASTER than ThreadPoolExecutor for API calls"""
-    prompt = prompt_template.format(
-        field_instructions=field_instructions,
-        html_content_for_gpt=chunk
-    )
+    
+    # Handle different parameter structures for different functions
+    if field_instructions is not None:
+        # For analyze_emr_type function
+        prompt = prompt_template.format(
+            field_instructions=field_instructions,
+            html_content_for_gpt=chunk
+        )
+    elif field_names_str is not None and emr_instructions is not None:
+        # For analyze_emr_file_for_ai function
+        prompt = prompt_template.format(
+            field_names_str=field_names_str,
+            emr_instructions=emr_instructions,
+            html_content_for_gpt=chunk
+        )
+    else:
+        # Fallback for backward compatibility
+        prompt = prompt_template.format(html_content_for_gpt=chunk)
 
     try:
         # Use thread pool to run synchronous create() in async context
@@ -125,7 +188,7 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
             lambda: openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and list each field with its value."},
+                    {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and return it in the specified JSON format."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=4000
@@ -134,19 +197,21 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
 
         result = response.choices[0].message.content
         print(f"=== DEBUG: AI Response for chunk: {result[:200]}... ===")
+        print(f"=== DEBUG: AI Response length: {len(result)} ===")
         return result
     except Exception as e:
         print(f"=== DEBUG: Error processing chunk: {str(e)} ===")
+        print(f"=== DEBUG: Error type: {type(e)} ===")
         return ""
 
 
-async def process_chunks_async(chunks: list, prompt_template: str, field_instructions: str, emr_type_id: str = None, db: Session = None) -> list:
+async def process_chunks_async(chunks: list, prompt_template: str, emr_type_id: str = None, db: Session = None, field_instructions: str = None, field_names_str: str = None, emr_instructions: str = None) -> list:
     """Process all chunks asynchronously - MUCH FASTER than ThreadPoolExecutor"""
     print(f"=== DEBUG: Processing {len(chunks)} chunks asynchronously ===")
 
     # Create async tasks for all chunks
     tasks = [
-        process_chunk_async(chunk, prompt_template, field_instructions)
+        process_chunk_async(chunk, prompt_template, field_instructions, field_names_str, emr_instructions)
         for chunk in chunks
     ]
 
@@ -246,7 +311,7 @@ def save_results_to_db_with_label(results: dict, emr_type_id: str, db: Session, 
 
 # Genarate Response button from fe is calling that API
 @router.post("/analyze-emr-file/")
-def analyze_emr_file_for_ai(
+async def analyze_emr_file_for_ai(
     req: GenerateRequest,
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
@@ -290,106 +355,139 @@ def analyze_emr_file_for_ai(
     print(f"=== DEBUG: Loading file from S3: {s3_key} ===")
     s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
     file_content = s3_response['Body'].read()
-    print(f"=== DEBUG: File content length: {len(file_content)} bytes ===")
 
     # Decode the file content
     raw_html = file_content.decode('utf-8', errors='ignore')
-    print(f"=== DEBUG: First 500 characters of file: {raw_html[:500]} ===")
 
     # Extract iframe content if present
-    soup = BeautifulSoup(raw_html, 'html.parser')
-    iframes = soup.find_all('iframe')
-    if iframes:
-        print("✅ Found iframe content in HTML")
-        for iframe in iframes:
-            # Check srcdoc attribute first
-            srcdoc = iframe.get('srcdoc')
-            if srcdoc:
-                print(f"=== DEBUG: Found iframe with srcdoc content ===")
-                raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
-            else:
-                # Check src attribute
-                src = iframe.get('src')
-                if src:
-                    print(f"=== DEBUG: Found iframe with src: {src} ===")
-                # Check inner content
-                iframe_content = iframe.get_text(strip=True)
-                if iframe_content:
-                    print(f"=== DEBUG: Found iframe with inner content ===")
-                    raw_html += "\n<!-- IFRAME CONTENT -->\n" + iframe_content
-
-    # Check for 'checked' attribute in HTML
-    if 'checked' in raw_html.lower():
-        print("✅ Found 'checked' in HTML")
-
-    print("=== END DEBUG ===")
+    # soup = BeautifulSoup(raw_html, 'html.parser')
+    # iframes = soup.find_all('iframe')
+    # if iframes:
+    #     print("✅ Found iframe content in HTML")
+    #     for iframe in iframes:
+    #         # Check srcdoc attribute first
+    #         srcdoc = iframe.get('srcdoc')
+    #         if srcdoc:
+    #             print(f"=== DEBUG: Found iframe with srcdoc content ===")
+    #             raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
+    #         else:
+    #             # Check src attribute
+    #             src = iframe.get('src')
+    #             if src:
+    #                 print(f"=== DEBUG: Found iframe with src: {src} ===")
+    #             # Check inner content
+    #             iframe_content = iframe.get_text(strip=True)
+    #             if iframe_content:
+    #                 print(f"=== DEBUG: Found iframe with inner content ===")
+    #                 raw_html += "\n<!-- IFRAME CONTENT -->\n" + iframe_content
 
     if not file_type:
         file_type, _ = mimetypes.guess_type(s3_key)
 
-    # Process the file content
-    if file_type == "text/html":
-        # Use the new truncation function
-        html_content_for_gpt = truncate_html_for_tokens(raw_html)
-    elif (file_type and file_type.startswith("text")) or file_type in [
-        "application/json", "application/xml", "application/javascript", "application/xhtml+xml", "application/x-www-form-urlencoded", "application/csv"]:
-        # For non-HTML, just decode and pass as is
-        html_content_for_gpt = raw_html
-    else:
-        raise HTTPException(status_code=400, detail=f"Cannot process non-text file type: {file_type or 'unknown'}")
+    # Check file type
+    if file_type != "text/html":
+        raise HTTPException(status_code=400, detail=f"Cannot process non-HTML file type: {file_type or 'unknown'}")
 
-    # Only truncate if the file is extremely large (over 100,000 characters)
-    MAX_CHARS = 100000  # Much larger limit for GPT-4o
-    if len(html_content_for_gpt) > MAX_CHARS:
-        # Truncate intelligently - try to keep complete sentences
-        truncated = html_content_for_gpt[:MAX_CHARS]
-        last_period = truncated.rfind('.')
-        last_question = truncated.rfind('?')
-        last_exclamation = truncated.rfind('!')
+    # Get field names and values from results table
+    results = get_emr_type_results_by_emr_type(db, emr_type_id)
+    field_data = [(result.key, result.value) for result in results if result.status != "ignore" and result.status == "confirmed"]
+    field_names = [{"key": key, "value": value} for key, value in field_data]
+ 
+    if not field_names:
+        raise HTTPException(status_code=400, detail="No fields found to extract")
 
-        # Find the last sentence ending
-        last_sentence = max(last_period, last_question, last_exclamation)
-        if last_sentence > MAX_CHARS * 0.8:  # If we can find a sentence ending in the last 20%
-            html_content_for_gpt = truncated[:last_sentence + 1]
-        else:
-            html_content_for_gpt = truncated + "... [truncated]"
+    # Create static instructions for AI
+    print(f"=== DEBUG: Creating static instructions with {len(field_names)} field names ===")
+    
+    # Format field_names properly to avoid format string issues
+    field_names_str = "\n".join([f"- {item['key']}: {item['value']}" for item in field_names])
+    
+    # Create prompt template
+    prompt_template = """You are analyzing a psychotherapy EMR form. Extract information from the HTML content and return it in the exact JSON format shown below.
 
-    # Use the instructions as the question for GPT
-    prompt = f"""
-Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the requested information.
+IMPORTANT RULES:
+1. Use the exact format shown in the JSON instructions for ALL fields
+2. For each field name, find the actual data in the HTML and extract it
+3. Use appropriate CSS selectors to locate elements (classes, IDs, tags, attributes)
+4. Use the right attribute to extract data (textContent, innerHTML, href, src, title, value, alt, etc.)
+5. Return real data, not placeholder text
+7. Always include both selector and attribute in the source, even if value is empty
 
-HTML CONTENT:
-{html_content_for_gpt}
+KEY-VALUE MATCHING RULE:
+- For each key-value pair in the list below, you must find BOTH the key AND its corresponding value in the HTML file
+- Look through the file to find where the key appears AND what its actual value is
+- Only return json results when you find a complete key-value pair match in the file
+- If you find only the key without its value, or only a value without its key, do NOT return anything for that field
+- The key and value must be connected/related to each other in the HTML structure
+- For each match found, extract the CSS selector and attribute used to locate the data
 
-INSTRUCTIONS:
-{emr.instructions}
+KEY-VALUE PAIRS TO EXTRACT:
+{field_names_str}
 
-Please provide a clear, accurate response based on the HTML content and instructions provided.
-"""
+JSON FORMAT TO FOLLOW:
+{emr_instructions}
 
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=4000
+Apply this exact format to all the field names listed above. Extract real data from the HTML and return it in this json format.
+
+HTML CONTENT: {html_content_for_gpt}"""
+
+    # Create chunks from the full HTML content
+    chunks = create_chunks(raw_html)
+
+    # Set initial processing status
+    update_emr_type(db, emr_type_id, status="processing", total_chunks=len(chunks), processed_chunks=0)
+    print(f"=== DEBUG: Started processing {len(chunks)} chunks for AI analysis ===")
+
+    if len(chunks) == 1:
+        # Single chunk - process normally
+        print("=== DEBUG: Processing single chunk for AI ===")
+        prompt = prompt_template.format(
+            field_names_str=field_names_str,
+            emr_instructions=emr.instructions,
+            html_content_for_gpt=chunks[0]
         )
 
-        answer = response.choices[0].message.content
-    except Exception as e:
-        print(f"ERROR:root:Unhandled error for request http://localhost:8001/api/v1/ai/analyze-emr-file/: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and return it in the specified JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=4000
+            )
+            result = response.choices[0].message.content
+            print(f"=== DEBUG: AI Response: {result} ===")
 
-    # Save the response to the database
-    update_emr_type(db, emr_type_id, response=answer)
+            # Clean and validate the response before saving
+            cleaned_response = clean_ai_response(result)
+            
+            # Save the cleaned response to the database
+            update_emr_type(db, emr_type_id, response=cleaned_response, status='generated')
+            print(f"=== DEBUG: Updated EMR type status to 'Generated' ===")
 
-    # Update status to 'generated' after successful response generation
-    update_emr_type(db, emr_type_id, status='generated')
-    print(f"=== DEBUG: Updated EMR type status to 'Generated' after response generation ===")
+            return {"result": result}
 
-    return {"result": answer}
+        except Exception as e:
+            print(f"=== DEBUG: Error processing single chunk: {str(e)} ===")
+            raise HTTPException(status_code=500, detail=f"Error processing EMR content: {str(e)}")
+    
+    else:
+        # Multiple chunks - process asynchronously
+        print(f"=== DEBUG: Processing {len(chunks)} chunks asynchronously for AI ===")
+        chunk_responses = await process_chunks_async(chunks, prompt_template, emr_type_id, db, field_names_str=field_names_str, emr_instructions=emr.instructions)
+        
+        # Combine all chunk responses
+        combined_response = "\n\n".join(chunk_responses)
+        
+        # Clean and validate the response before saving
+        cleaned_response = clean_ai_response(combined_response)
+        
+        # Save the cleaned response to the database
+        update_emr_type(db, emr_type_id, response=cleaned_response, status='generated')
+        print(f"=== DEBUG: Updated EMR type status to 'Generated' ===")
+
+        return {"result": combined_response}
 
 # The save button on top from the instructions box in EMR Type Details was calling this but for now we took down that save button with instructions box from the fe
 @router.post("/save-response/")
@@ -595,8 +693,7 @@ HTML CONTENT: {html_content_for_gpt}"""
         else:
             # Multiple chunks - process asynchronously with progress tracking
             print(f"=== DEBUG: Processing {len(chunks)} chunks asynchronously ===")
-            chunk_responses = await process_chunks_async(chunks, prompt_template, combined_instructions, emr_type_id, db)
-            
+            chunk_responses = await process_chunks_async(chunks, prompt_template, emr_type_id, db, field_instructions=combined_instructions)            
             # Format chunks for frontend
             formatted_chunks = []
             for i, response in enumerate(chunk_responses):
@@ -619,120 +716,7 @@ HTML CONTENT: {html_content_for_gpt}"""
         print(f"=== DEBUG: Error in analyze_emr_type: {str(e)} ===")
         raise HTTPException(status_code=500, detail=f"Error analyzing EMR: {str(e)}")
 
-def generate_json_instructions_from_results(results):
-    """Generate JSON instructions from analysis results"""
 
-    # Start with the header
-    json_instructions = """JSON OUTPUT INSTRUCTION
-return a single JSON object in the following format:
-
-"""
-
-    # Generate the JSON structure for each result
-    json_instructions += "{\n"
-
-    for i, result in enumerate(results):
-        # Check if field has specific instructions
-        if result.instructions and result.instructions.strip():
-            # Field HAS instructions - generate specific JSON based on instructions
-            selector, attribute = parse_instructions_to_selector(result.instructions)
-
-            json_instructions += f'  "{result.key}": {{\n'
-            json_instructions += f'    "value": "put the extracted value here",\n'
-            json_instructions += f'    "source": {{\n'
-            json_instructions += f'      "selector": "{selector}",\n'
-            json_instructions += f'      "attribute": "{attribute}"\n'
-            json_instructions += f'    }}\n'
-            json_instructions += f'  }}{"," if i < len(results) - 1 else ""}\n'
-        else:
-            # Field has NO instructions - use current generic template
-            template_selector = f"exact CSS selector path (e.g. {result.key.lower()}-selector)"
-
-            json_instructions += f'  "{result.key}": {{\n'
-            json_instructions += f'    "value": "put the extracted value here",\n'
-            json_instructions += f'    "source": {{\n'
-            json_instructions += f'      "selector": "{template_selector}",\n'
-            json_instructions += f'      "attribute": "attribute you used (title, value, textContent, checked)"\n'
-            json_instructions += f'    }}\n'
-            json_instructions += f'  }}{"," if i < len(results) - 1 else ""}\n'
-
-    json_instructions += """}
-
-IMPORTANT RULES:
-1. The "selector" should ONLY contain the CSS selector path - DO NOT include the actual values in the selector
-2. The "attribute" should specify which attribute you used to extract the value (title, value, textContent, checked)
-3. Look for the EXACT selectors in the HTML you receive. Don't use generic selectors - use the specific IDs, classes, and attributes you actually see in the HTML.
-4. The selector should be reusable - someone should be able to use that same selector to find the element again.
-
-You must output JSON for all fields. Always display in source the selector and attribute even if value is "empty" or "false"."""
-
-    return json_instructions
-
-def parse_instructions_to_selector(instructions):
-    """Parse instructions to generate specific CSS selector and attribute"""
-    instructions_lower = instructions.lower()
-
-    # Default values
-    selector = "exact CSS selector path"
-    attribute = "attribute you used (title, value, textContent, checked)"
-
-    # Parse for element types
-    if "<a>" in instructions_lower or "a element" in instructions_lower:
-        selector = "a"
-    elif "<input>" in instructions_lower or "input element" in instructions_lower:
-        selector = "input"
-    elif "<div>" in instructions_lower or "div element" in instructions_lower:
-        selector = "div"
-    elif "<span>" in instructions_lower or "span element" in instructions_lower:
-        selector = "span"
-    elif "<label>" in instructions_lower or "label element" in instructions_lower:
-        selector = "label"
-
-    # Parse for classes
-    if "class containing" in instructions_lower:
-        # Extract class names from instructions
-        import re
-        class_matches = re.findall(r'class.*?["\']([^"\']+)["\']', instructions, re.IGNORECASE)
-        if class_matches:
-            classes = class_matches[0].split()
-            selector += "." + ".".join(classes)
-        else:
-            # Look for class names mentioned
-            class_keywords = ["formset-link-format", "lut-description", "client-name", "date-input", "time-input"]
-            found_classes = []
-            for keyword in class_keywords:
-                if keyword in instructions_lower:
-                    found_classes.append(keyword)
-            if found_classes:
-                selector += "." + ".".join(found_classes)
-
-    # Parse for IDs
-    if "id containing" in instructions_lower:
-        # Extract ID patterns from instructions
-        import re
-        id_matches = re.findall(r'id.*?["\']([^"\']+)["\']', instructions, re.IGNORECASE)
-        if id_matches:
-            selector = f"#{id_matches[0]}"
-        else:
-            # Look for ID patterns mentioned
-            if "input-date" in instructions_lower and "input-time" in instructions_lower:
-                selector = "input[id*='input-date'], input[id*='input-time']"
-            elif "input-date" in instructions_lower:
-                selector = "input[id*='input-date']"
-            elif "input-time" in instructions_lower:
-                selector = "input[id*='input-time']"
-
-    # Parse for attributes
-    if "title attribute" in instructions_lower or "title" in instructions_lower:
-        attribute = "title"
-    elif "value attribute" in instructions_lower or "value" in instructions_lower:
-        attribute = "value"
-    elif "textcontent" in instructions_lower or "text content" in instructions_lower:
-        attribute = "textContent"
-    elif "checked" in instructions_lower:
-        attribute = "checked"
-
-    return selector, attribute
 
 @router.post("/save-selected-chunk/")
 async def save_selected_chunk(
@@ -857,12 +841,16 @@ async def save_selected_chunk(
 
     print(f"=== DEBUG: Saved {len(field_values)} fields with multiple values ===")
 
-    # Generate JSON instructions from the results
-    results = get_emr_type_results_by_emr_type(db, emr_type_id)
-    # Filter out results with status "ignore"
-    results = [result for result in results if result.status != "ignore"]
-
-    json_instructions = generate_json_instructions_from_results(results)
+    # Use static JSON instructions format
+    json_instructions = {
+        "Example Field": {
+            "value": "example value",
+            "source": {
+                "selector": "use CSS selector (.class, #id, tag, [attribute], :pseudo-class, etc.) to locate the element containing this data",
+                "attribute": "use the right attribute (textContent, innerHTML, href, src, title, value, alt, data-*, etc.) to extract the data from the element"
+            }
+        }
+    }
 
     # Save the generated JSON instructions to the EMR type
     update_emr_type(db, emr_type_id, instructions=json_instructions)
