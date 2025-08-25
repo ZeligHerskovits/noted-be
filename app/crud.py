@@ -409,9 +409,105 @@ def delete_all_emr_type_results_by_emr_type(db: Session, emr_type_id: UUID):
     db.commit()
     return True
 
+def _create_field_mapping(emr_fields):
+    """Create smart field mapping that handles various frontend field name formats"""
+    field_mapping = {}
+    for field in emr_fields:
+        if field.api_name:
+            # Normalize the field name to ensure single spaces between words
+            normalized_name = ' '.join(field.name.split())  # This normalizes multiple spaces to single spaces
+            
+            # Store normalized name and lowercase version (don't store original with multiple spaces)
+            field_mapping[normalized_name] = field.api_name
+            field_mapping[normalized_name.lower()] = field.api_name
+            
+            # Create variations for flexible matching
+            # 1. Remove spaces: "Appt Date" -> "ApptDate"
+            no_spaces = normalized_name.replace(' ', '')
+            field_mapping[no_spaces] = field.api_name
+            field_mapping[no_spaces.lower()] = field.api_name
+            
+            # 2. Replace spaces with underscores: "Appt Date" -> "Appt_Date"
+            with_underscores = normalized_name.replace(' ', '_')
+            field_mapping[with_underscores] = field.api_name
+            field_mapping[with_underscores.lower()] = field.api_name
+            
+            # 3. Replace spaces with dashes: "Appt Date" -> "Appt-Date"
+            with_dashes = normalized_name.replace(' ', '-')
+            field_mapping[with_dashes] = field.api_name
+            field_mapping[with_dashes.lower()] = field.api_name
+            
+            # 4. CamelCase variations: "Appt Date" -> "apptDate"
+            words = normalized_name.split()
+            if len(words) > 1:
+                camel_case = words[0].lower() + ''.join(word.capitalize() for word in words[1:])
+                field_mapping[camel_case] = field.api_name
+                field_mapping[camel_case.lower()] = field.api_name
+            
+            # 5. Handle dash variations (frontend has dashes, EMR field doesn't)
+            # Remove dashes from EMR field name: "Appt-Date" -> "ApptDate"
+            no_dashes = normalized_name.replace('-', '')
+            field_mapping[no_dashes] = field.api_name
+            field_mapping[no_dashes.lower()] = field.api_name
+            
+            # 6. Handle underscore variations (frontend has underscores, EMR field doesn't)
+            # Remove underscores from EMR field name: "Appt_Date" -> "ApptDate"
+            no_underscores = normalized_name.replace('_', '')
+            field_mapping[no_underscores] = field.api_name
+            field_mapping[no_underscores.lower()] = field.api_name
+            
+            # 7. Replace dashes with spaces: "Appt-Date" -> "Appt Date"
+            dash_to_space = normalized_name.replace('-', ' ')
+            field_mapping[dash_to_space] = field.api_name
+            field_mapping[dash_to_space.lower()] = field.api_name
+            
+            # 8. Replace underscores with spaces: "Appt_Date" -> "Appt Date"
+            underscore_to_space = normalized_name.replace('_', ' ')
+            field_mapping[underscore_to_space] = field.api_name
+            field_mapping[underscore_to_space.lower()] = field.api_name
+            
+            # 9. Handle extra spaces around dashes: "Appt- Date", "Appt -Date", "Appt - Date"
+            # Normalize spaces around dashes: "Appt - Date" -> "Appt-Date"
+            normalized_dash = normalized_name.replace(' - ', '-').replace(' -', '-').replace('- ', '-')
+            if normalized_dash != normalized_name:
+                field_mapping[normalized_dash] = field.api_name
+                field_mapping[normalized_dash.lower()] = field.api_name
+            
+            # 10. Handle extra spaces around underscores: "Appt_ Date", "Appt _Date", "Appt _ Date"
+            # Normalize spaces around underscores: "Appt _ Date" -> "Appt_Date"
+            normalized_underscore = normalized_name.replace(' _ ', '_').replace(' _', '_').replace('_ ', '_')
+            if normalized_underscore != normalized_name:
+                field_mapping[normalized_underscore] = field.api_name
+                field_mapping[normalized_underscore.lower()] = field.api_name
+    
+    return field_mapping
+
+def _find_matching_api_name(key, field_mapping):
+    """Smart function to find matching api_name with space normalization"""
+    # First try exact match
+    api_name = field_mapping.get(key) or field_mapping.get(key.lower())
+    if api_name:
+        return api_name
+    
+    # If no exact match, try normalizing spaces in the key
+    normalized_key = ' '.join(key.split())  # Normalize multiple spaces to single spaces
+    api_name = field_mapping.get(normalized_key) or field_mapping.get(normalized_key.lower())
+    if api_name:
+        return api_name
+    
+    # If still no match, try matching against all field_mapping keys with space normalization
+    for field_key, field_api_name in field_mapping.items():
+        normalized_field_key = ' '.join(field_key.split())  # Normalize field mapping key
+        normalized_input_key = ' '.join(key.split())        # Normalize input key
+        if normalized_field_key.lower() == normalized_input_key.lower():
+            return field_api_name
+    
+    return None
+
 # Session CRUD operations
 def create_session(db: Session, user_id: UUID, **session_data):
-    """Create a new session with dynamic fields"""
+    """Create a new session with dynamic fields - SIMPLIFIED"""
+    
     # Get the EMR type name from emr_type_id
     emr_type_id = session_data.get('emr_type_id')
     if emr_type_id:
@@ -419,140 +515,55 @@ def create_session(db: Session, user_id: UUID, **session_data):
         if emr_type:
             session_data['emr_name'] = emr_type.name
     
-    # Get all dynamic fields from emr_type_fields (global)
+    # Get all EMR fields for smart matching
     emr_fields = db.query(EMRTypeField).all()
     
-    # Create mapping from original name to api_name (case-insensitive)
-    field_name_mapping = {}
-    for field in emr_fields:
-        if field.api_name:
-            # Store both original case and lowercase versions
-            field_name_mapping[field.name] = field.api_name
-            field_name_mapping[field.name.lower()] = field.api_name  # Lowercase version
-            field_name_mapping[field.api_name] = field.api_name  # Also allow api_name directly
-            
-            # Create variations without dashes for flexible matching
-            name_without_dashes = field.name.replace('-', ' ').replace('  ', ' ').strip()
-            field_name_mapping[name_without_dashes] = field.api_name
-            field_name_mapping[name_without_dashes.lower()] = field.api_name
-            
-            # Create variations with underscores
-            name_with_underscores = field.name.replace('-', '_').replace(' ', '_')
-            field_name_mapping[name_with_underscores] = field.api_name
-            field_name_mapping[name_with_underscores.lower()] = field.api_name
-            
-            # Create variations with no spaces/dashes
-            name_no_spaces = field.name.replace('-', '').replace(' ', '')
-            field_name_mapping[name_no_spaces] = field.api_name
-            field_name_mapping[name_no_spaces.lower()] = field.api_name
-            
-            # Create variations with just spaces (no dashes)
-            name_just_spaces = field.name.replace('-', ' ')
-            field_name_mapping[name_just_spaces] = field.api_name
-            field_name_mapping[name_just_spaces.lower()] = field.api_name
+    # Create smart mapping: frontend name → api_name (handles various formats)
+    field_mapping = _create_field_mapping(emr_fields)
     
-    dynamic_field_names = {field.api_name for field in emr_fields if field.api_name}
-    
-    # Debug: Print what we have
-    print(f"🔍 Field name mapping: {field_name_mapping}")
-    print(f"🔍 Session data keys: {list(session_data.keys())}")
-    print(f"🔍 Session data values: {session_data}")
-    
-    # Static fields that are always allowed
-    static_fields = {
-        'client_id', 'emr_type_id', 'emr_name', 'manual_instructions', 
-        'session_response', 'user_id'
-    }
-    
-    # Combine static and dynamic field names
-    allowed_fields = static_fields | dynamic_field_names
-    
-    # Smart field name matching function
-    def find_matching_api_name(field_key, field_mapping):
-        """Find the matching api_name for any field key variation"""
-        # Try exact match first
-        if field_key in field_mapping:
-            return field_mapping[field_key]
-        
-        # Try lowercase
-        if field_key.lower() in field_mapping:
-            return field_mapping[field_key.lower()]
-        
-        # Try case-insensitive matching for all keys
-        field_key_lower = field_key.lower()
-        for original_name, api_name in field_mapping.items():
-            if original_name.lower() == field_key_lower:
-                return api_name
-        
-        # Try normalized versions (replace spaces, dashes, underscores)
-        normalized_key = field_key.lower().replace('-', ' ').replace('_', ' ').replace('  ', ' ').strip()
-        for original_name, api_name in field_mapping.items():
-            normalized_original = original_name.lower().replace('-', ' ').replace('_', ' ').replace('  ', ' ').strip()
-            if normalized_key == normalized_original:
-                return api_name
-        
-        # Try removing all spaces/dashes/underscores
-        clean_key = field_key.lower().replace('-', '').replace('_', '').replace(' ', '')
-        for original_name, api_name in field_mapping.items():
-            clean_original = original_name.lower().replace('-', '').replace('_', '').replace(' ', '')
-            if clean_key == clean_original:
-                return api_name
-        
-        return None
-    
-    # Transform session_data keys to match api_names
+    # Transform session_data keys to api_names
     transformed_data = {}
     for key, value in session_data.items():
-        if key in allowed_fields:
-            # Direct match (static field or api_name)
-            transformed_data[key] = value
+        # Try to find matching api_name with smart space handling
+        api_name = _find_matching_api_name(key, field_mapping)
+        if api_name:
+            transformed_data[api_name] = value
         else:
-            # Try to find matching api_name
-            api_name = find_matching_api_name(key, field_name_mapping)
-            if api_name:
-                transformed_data[api_name] = value
-                print(f"🔍 Smart matched '{key}' → '{api_name}'")
-            else:
-                print(f"⚠️ Field '{key}' not found in allowed fields or field mapping")
+            # Keep original key if no mapping found
+            transformed_data[key] = value
     
-    print(f"🔍 Allowed fields: {allowed_fields}")
-    print(f"🔍 Transformed data: {transformed_data}")
+    # Add user_id
+    transformed_data['user_id'] = user_id
     
-    # Create session using raw SQL to handle dynamic columns
+    # Create session using raw SQL - only save fields that exist in sessions table
     from sqlalchemy import text
     
-    # Get all column names from the sessions table
+    # Get all existing columns from sessions table
     result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'"))
-    all_columns = [row[0] for row in result.fetchall()]
+    existing_columns = {row[0] for row in result.fetchall()}
     
-    # Filter data to only include columns that exist in the table
-    table_data = {k: v for k, v in transformed_data.items() if k in all_columns}
+    # Filter to only include fields that exist in the sessions table
+    valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
     
-    # Add user_id to the data
-    table_data['user_id'] = user_id
+    if not valid_data:
+        raise Exception("No valid fields to insert")
     
-    # Create session using raw SQL
-    columns = ', '.join(table_data.keys())
-    placeholders = ', '.join([f':{key}' for key in table_data.keys()])
+    columns = ', '.join(valid_data.keys())
+    placeholders = ', '.join([f':{key}' for key in valid_data.keys()])
     
     query = text(f"INSERT INTO sessions ({columns}) VALUES ({placeholders}) RETURNING *")
-    result = db.execute(query, table_data)
+    result = db.execute(query, valid_data)
     
-    # Get the created session
     session_data = result.fetchone()
     db.commit()
     
-    # Convert Row object to dictionary using _mapping
-    session_dict = dict(session_data._mapping)
-    
-    # Create a simple object with all the data instead of SessionModel
+    # Return simple object
     class SessionResult:
         def __init__(self, **kwargs):
             for key, value in kwargs.items():
                 setattr(self, key, value)
     
-    session = SessionResult(**session_dict)
-    return session
+    return SessionResult(**dict(session_data._mapping))
 
 def get_session(db: Session, session_id: UUID):
     """Get session by ID with all dynamic fields"""
@@ -653,7 +664,7 @@ def get_sessions_by_client(db: Session, client_id: UUID):
     return sessions
 
 def update_session(db: Session, session_id: UUID, **session_data):
-    """Update a session with dynamic fields"""
+    """Update a session with dynamic fields - SIMPLIFIED"""
     from sqlalchemy import text
     
     # First check if session exists
@@ -662,162 +673,50 @@ def update_session(db: Session, session_id: UUID, **session_data):
     if not result.fetchone():
         return None
     
-    # Get all dynamic fields from emr_type_fields (global)
+    # Get all EMR fields for smart matching
     emr_fields = db.query(EMRTypeField).all()
     
-    # Create mapping from original name to api_name (case-insensitive)
-    field_name_mapping = {}
-    for field in emr_fields:
-        if field.api_name:
-            # Store both original case and lowercase versions
-            field_name_mapping[field.name] = field.api_name
-            field_name_mapping[field.name.lower()] = field.api_name  # Lowercase version
-            field_name_mapping[field.api_name] = field.api_name  # Also allow api_name directly
-            
-            # Create variations without dashes for flexible matching
-            name_without_dashes = field.name.replace('-', ' ').replace('  ', ' ').strip()
-            field_name_mapping[name_without_dashes] = field.api_name
-            field_name_mapping[name_without_dashes.lower()] = field.api_name
-            
-            # Create variations with underscores
-            name_with_underscores = field.name.replace('-', '_').replace(' ', '_')
-            field_name_mapping[name_with_underscores] = field.api_name
-            field_name_mapping[name_with_underscores.lower()] = field.api_name
-            
-            # Create variations with no spaces/dashes
-            name_no_spaces = field.name.replace('-', '').replace(' ', '')
-            field_name_mapping[name_no_spaces] = field.api_name
-            field_name_mapping[name_no_spaces.lower()] = field.api_name
-            
-            # Create variations with just spaces (no dashes)
-            name_just_spaces = field.name.replace('-', ' ')
-            field_name_mapping[name_just_spaces] = field.api_name
-            field_name_mapping[name_just_spaces.lower()] = field.api_name
+    # Create smart mapping: frontend name → api_name (handles various formats)
+    field_mapping = _create_field_mapping(emr_fields)
     
-    dynamic_field_names = {field.api_name for field in emr_fields if field.api_name}
-    
-    # Smart field name matching function
-    def find_matching_api_name(field_key, field_mapping):
-        """Find the matching api_name for any field key variation"""
-        # Try exact match first
-        if field_key in field_mapping:
-            return field_mapping[field_key]
-        
-        # Try lowercase
-        if field_key.lower() in field_mapping:
-            return field_mapping[field_key.lower()]
-        
-        # Try normalized versions
-        normalized_key = field_key.lower().replace('-', ' ').replace('_', ' ').replace('  ', ' ').strip()
-        if normalized_key in field_mapping:
-            return field_mapping[normalized_key]
-        
-        # Try removing all spaces/dashes/underscores
-        clean_key = field_key.lower().replace('-', '').replace('_', '').replace(' ', '')
-        for original_name, api_name in field_mapping.items():
-            clean_original = original_name.lower().replace('-', '').replace('_', '').replace(' ', '')
-            if clean_key == clean_original:
-                return api_name
-        
-        return None
-    
-    # Static fields that are always allowed
-    static_fields = {
-        'client_id', 'emr_type_id', 'emr_name', 'manual_instructions', 
-        'session_response', 'user_id'
-    }
-    
-    # Combine static and dynamic field names
-    allowed_fields = static_fields | dynamic_field_names
-    
-    # Get all column names from the sessions table
-    result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'"))
-    all_columns = [row[0] for row in result.fetchall()]
-    
-    # Transform session_data keys to match api_names
-    # Use a temporary dictionary to store the best value for each canonical api_name
-    temp_transformed_data = {}
-    
-    # Iterate through the incoming session_data
+    # Transform session_data keys to api_names
+    transformed_data = {}
     for key, value in session_data.items():
-        print(f"🔍 Processing field: '{key}' = '{value}' (type: {type(value)})")
-        
-        # Find the canonical API name for the current key
-        canonical_api_name = find_matching_api_name(key, field_name_mapping)
-        
-        if canonical_api_name:
-            current_stored_value = temp_transformed_data.get(canonical_api_name)
-            
-            should_overwrite = False
-            
-            if canonical_api_name not in temp_transformed_data: # If not yet stored, always add
-                should_overwrite = True
-            elif value is not None and value != '': # New value is non-empty/non-None
-                if current_stored_value is None or current_stored_value == '':
-                    # New value is good, existing is empty/None, so overwrite
-                    should_overwrite = True
-                else:
-                    # Both new and existing are good, last one wins (overwrite)
-                    should_overwrite = True
-            elif value is None or value == '': # New value is empty/None
-                # If new value is empty/None, only overwrite if existing is also empty/None
-                if current_stored_value is None or current_stored_value == '':
-                    should_overwrite = True
-                # Else (existing is good), do not overwrite
-            
-            if should_overwrite:
-                temp_transformed_data[canonical_api_name] = value
-                print(f"🔍 Smart matched '{key}' → '{canonical_api_name}' = '{value}' for update (OVERWRITING)")
-            else:
-                print(f"🔍 Smart matched '{key}' → '{canonical_api_name}' = '{value}' for update (SKIPPING - keeping existing '{current_stored_value}')")
+        # Try to find matching api_name with smart space handling
+        api_name = _find_matching_api_name(key, field_mapping)
+        if api_name:
+            transformed_data[api_name] = value
         else:
-            # If no canonical API name found, it's either a static field or an unknown field.
-            # For static fields, add them directly to the transformed data.
-            if key in allowed_fields: 
-                temp_transformed_data[key] = value
-                print(f"🔍 Direct match (static/allowed): '{key}' → '{key}' = '{value}'")
-            else:
-                print(f"⚠️ Field '{key}' not found in allowed fields or field mapping for update (SKIPPED)")
-
-    # Now, `transformed_data` is the final set of key-value pairs after smart matching and prioritization.
-    transformed_data = temp_transformed_data
-    print(f"🔍 Transformed data (after smart prioritization): {transformed_data}")
+            # Keep original key if no mapping found
+            transformed_data[key] = value
     
-    # Filter transformed_data to only include valid columns
-    update_data = {}
-    for key, value in transformed_data.items():
-        if key in all_columns and value is not None:
-            update_data[key] = value
-            print(f"🔍 Added to update: '{key}' = '{value}'")
-        else:
-            print(f"⚠️ Field '{key}' filtered out - not in columns or value is None (value: '{value}', type: {type(value)})")
+    # Get all existing columns from sessions table
+    result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'"))
+    existing_columns = {row[0] for row in result.fetchall()}
     
-    print(f"🔍 Final update data: {update_data}")
-    
-    if not update_data:
-        # No valid fields to update, just return the session
-        return get_session(db, session_id)
+    # Filter to only include fields that exist in the sessions table
+    valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
     
     # Build the UPDATE query
-    set_clause = ', '.join([f"{key} = :{key}" for key in update_data.keys()])
+    if not valid_data:
+        return get_session(db, session_id)
+    
+    set_clause = ', '.join([f"{key} = :{key}" for key in valid_data.keys()])
     query = text(f"UPDATE sessions SET {set_clause} WHERE id = :session_id RETURNING *")
     
     # Execute the update
-    update_data['session_id'] = session_id
-    result = db.execute(query, update_data)
+    valid_data['session_id'] = session_id
+    result = db.execute(query, valid_data)
     updated_session_data = result.fetchone()
     db.commit()
     
-    # Convert Row object to dictionary
-    session_dict = dict(updated_session_data._mapping)
-    
-    # Create a simple object with all the data
+    # Return simple object
     class SessionResult:
         def __init__(self, **kwargs):
             for key, value in kwargs.items():
                 setattr(self, key, value)
     
-    return SessionResult(**session_dict)
+    return SessionResult(**dict(updated_session_data._mapping))
 
 def delete_session(db: Session, session_id: UUID):
     """Delete a session"""

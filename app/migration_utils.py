@@ -265,6 +265,12 @@ def downgrade() -> None:
     
     def sanitize_field_name(self, field_name: str) -> str:
         """Sanitizes field name for safe use in SQL and file names"""
+        
+        # Special case: client id fields should use double underscore to avoid conflict with existing client_id
+        field_name_lower = field_name.lower()
+        if field_name_lower in ['clientid', 'client id', 'clientid', 'client id', 'client id', 'client id']:
+            return 'client__id'  # Double underscore to avoid conflict with existing client_id field
+        
         # Replace spaces and special characters with underscores
         sanitized = field_name.replace(' ', '_').replace('-', '_').replace('.', '_')
         # Remove any other non-alphanumeric characters except underscores
