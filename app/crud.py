@@ -529,6 +529,10 @@ def create_session(db: Session, user_id: UUID, **session_data):
     # Transform session_data keys to api_names
     transformed_data = {}
     for key, value in session_data.items():
+        # Check if key is client_id, if so just copy it directly
+        if key == 'client_id':
+            transformed_data[key] = value
+            continue
         # Try to find matching api_name with smart space handling
         api_name = _find_matching_api_name(key, field_mapping)
         if api_name:
@@ -686,6 +690,10 @@ def update_session(db: Session, session_id: UUID, **session_data):
     # Transform session_data keys to api_names
     transformed_data = {}
     for key, value in session_data.items():
+         # Check if key is client_id, if so just copy it directly
+        if key == 'client_id':
+            transformed_data[key] = value
+            continue
         # Try to find matching api_name with smart space handling
         api_name = _find_matching_api_name(key, field_mapping)
         if api_name:
