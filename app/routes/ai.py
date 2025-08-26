@@ -57,88 +57,18 @@ def enhance_response_with_api_names(response_data: dict, db: Session) -> dict:
     try:
         # Get all EMR type fields from database
         from ..models import EMRTypeField
+        from ..crud import _create_field_mapping, _find_matching_api_name
+        
         emr_fields = db.query(EMRTypeField).all()
         
-        # Create smart field mapping for name to api_name
-        field_mapping = {}
-        for field in emr_fields:
-            if field.api_name:
-                # Normalize the field name to ensure single spaces between words
-                normalized_name = ' '.join(field.name.split())
-                
-                # Store normalized name and lowercase version
-                field_mapping[normalized_name] = field.api_name
-                field_mapping[normalized_name.lower()] = field.api_name
-                
-                # Create variations for flexible matching
-                # 1. Remove spaces: "Appt Date" -> "ApptDate"
-                no_spaces = normalized_name.replace(' ', '')
-                field_mapping[no_spaces] = field.api_name
-                field_mapping[no_spaces.lower()] = field.api_name
-                
-                # 2. Replace spaces with underscores: "Appt Date" -> "Appt_Date"
-                with_underscores = normalized_name.replace(' ', '_')
-                field_mapping[with_underscores] = field.api_name
-                field_mapping[with_underscores.lower()] = field.api_name
-                
-                # 3. Replace spaces with dashes: "Appt Date" -> "Appt-Date"
-                with_dashes = normalized_name.replace(' ', '-')
-                field_mapping[with_dashes] = field.api_name
-                field_mapping[with_dashes.lower()] = field.api_name
-                
-                # 4. CamelCase variations: "Appt Date" -> "apptDate"
-                words = normalized_name.split()
-                if len(words) > 1:
-                    camel_case = words[0].lower() + ''.join(word.capitalize() for word in words[1:])
-                    field_mapping[camel_case] = field.api_name
-                    field_mapping[camel_case.lower()] = field.api_name
-                
-                # 5. Handle dash variations
-                no_dashes = normalized_name.replace('-', '')
-                field_mapping[no_dashes] = field.api_name
-                field_mapping[no_dashes.lower()] = field.api_name
-                
-                # 6. Handle underscore variations
-                no_underscores = normalized_name.replace('_', '')
-                field_mapping[no_underscores] = field.api_name
-                field_mapping[no_underscores.lower()] = field.api_name
-                
-                # 7. Replace dashes with spaces
-                dash_to_space = normalized_name.replace('-', ' ')
-                field_mapping[dash_to_space] = field.api_name
-                field_mapping[dash_to_space.lower()] = field.api_name
-                
-                # 8. Replace underscores with spaces
-                underscore_to_space = normalized_name.replace('_', ' ')
-                field_mapping[underscore_to_space] = field.api_name
-                field_mapping[underscore_to_space.lower()] = field.api_name
+        # Use existing field mapping function instead of duplicating logic
+        field_mapping = _create_field_mapping(emr_fields)
         
         # Enhance the response data with api_name
         enhanced_response = {}
         for field_key, field_data in response_data.items():
-            # Find matching api_name using smart matching
-            api_name = None
-            
-            # Try exact match first
-            if field_key in field_mapping:
-                api_name = field_mapping[field_key]
-            elif field_key.lower() in field_mapping:
-                api_name = field_mapping[field_key.lower()]
-            else:
-                # Try normalized matching
-                normalized_key = ' '.join(field_key.split())
-                if normalized_key in field_mapping:
-                    api_name = field_mapping[normalized_key]
-                elif normalized_key.lower() in field_mapping:
-                    api_name = field_mapping[normalized_key.lower()]
-                else:
-                    # Try matching against all field_mapping keys with space normalization
-                    for field_mapping_key, field_api_name in field_mapping.items():
-                        normalized_field_key = ' '.join(field_mapping_key.split())
-                        normalized_input_key = ' '.join(field_key.split())
-                        if normalized_field_key.lower() == normalized_input_key.lower():
-                            api_name = field_api_name
-                            break
+            # Use existing smart matching function instead of duplicating logic
+            api_name = _find_matching_api_name(field_key, field_mapping)
             
             # Create enhanced field data
             enhanced_field_data = {
