@@ -26,8 +26,10 @@ from ..crud import (
     update_emr_type, delete_emr_type,
     create_emr_type_result, get_emr_type_results_by_emr_type, get_all_emr_type_results, delete_all_emr_type_results_by_emr_type,
     create_emr_type_field, get_emr_type_field, get_all_emr_type_fields, update_emr_type_field, delete_emr_type_field,
+    _create_field_mapping, _create_field_type_mapping,
     create_manual_field, get_manual_field, get_all_manual_fields, get_manual_fields_by_emr_type, update_manual_field, delete_manual_field
 )
+from ..models import EMRTypeField
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
 fields_router = APIRouter(prefix="/emr-types-fields", tags=["EMR Type Fields"])
@@ -276,15 +278,19 @@ def back_action_emr_type(
     else:
         new_status = "draft"
     
-    # Update the EMR type status
+    # Get the current total_chunks value to reset processed_chunks
+    total_chunks = emr_type.total_chunks or 0
+    
+    # Update the EMR type status and reset processed_chunks to match total_chunks
     update_emr_type(
         db=db,
         emr_type_id=emr_type_id,
-        status=new_status
+        status=new_status,
+        processed_chunks=total_chunks
     )
     
     return {
-        "message": f"EMR type status updated to '{new_status}'"
+        "message": f"EMR type status updated to '{new_status}' and processed_chunks reset to {total_chunks}"
     }
 
 # Update a EMR type
@@ -683,10 +689,44 @@ def delete_manual_field_endpoint(
     return {"message": "Manual field deleted successfully"}
 
 # EMR Type Results API Endpoints
-@results_router.get("/", response_model=List[EMRTypeResultResponse])
+@results_router.get("/")
 def get_all_emr_type_results_endpoint(
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
 ):
-    """Get all EMR type results"""
-    return get_all_emr_type_results(db) 
+    """Get all EMR type results with field type and name information"""
+    # Get all results
+    all_results = get_all_emr_type_results(db)
+    
+    # Get all EMR type fields for type and name info
+    emr_fields = db.query(EMRTypeField).all()
+    
+    # Use existing field type mapping function to avoid duplication
+    field_mapping = _create_field_type_mapping(emr_fields)
+    
+    # Transform results to include all original fields plus type
+    enhanced_results = []
+    for result in all_results:
+        # Try to find matching field type
+        field_type = field_mapping.get(result.key) or field_mapping.get(result.key.lower())
+        
+        # Create result object with all original fields
+        result_obj = {
+            "id": result.id,
+            "emr_type_id": result.emr_type_id,
+            "instructions": result.instructions,
+            "key": result.key,
+            "label": result.label,
+            "status": result.status,
+            "value": result.value
+        }
+        
+        # Add type if found
+        if field_type:
+            result_obj["type"] = field_type
+        else:
+            result_obj["type"] = "text"  # Default type
+        
+        enhanced_results.append(result_obj)
+    
+    return enhanced_results 

@@ -213,8 +213,8 @@ def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optiona
         
         # Check if field already exists in sessions table
         if not migration_manager.check_field_exists(db, api_name):
-            # Create migration file to add field to sessions table
-            migration_success = migration_manager.create_field_migration(api_name, "TEXT")
+            # Create migration file to add field to sessions table with the correct type
+            migration_success = migration_manager.create_field_migration(api_name, type)
             if migration_success:
                 print(f"✅ Successfully created migration for field '{name}'")
                 
@@ -409,7 +409,7 @@ def delete_all_emr_type_results_by_emr_type(db: Session, emr_type_id: UUID):
     db.commit()
     return True
 
-def _create_field_mapping(emr_fields):
+def _create_field_mapping(emr_fields, return_type="api_name"):
     """Create smart field mapping that handles various frontend field name formats"""
     field_mapping = {}
     for field in emr_fields:
@@ -417,70 +417,75 @@ def _create_field_mapping(emr_fields):
             # Normalize the field name to ensure single spaces between words
             normalized_name = ' '.join(field.name.split())  # This normalizes multiple spaces to single spaces
             
+            # Decide what value to return based on parameter
+            field_value = field.type if return_type == "type" else field.api_name
+            
             # Store normalized name and lowercase version (don't store original with multiple spaces)
-            field_mapping[normalized_name] = field.api_name
-            field_mapping[normalized_name.lower()] = field.api_name
+            field_mapping[normalized_name] = field_value
+            field_mapping[normalized_name.lower()] = field_value
             
             # Create variations for flexible matching
             # 1. Remove spaces: "Appt Date" -> "ApptDate"
             no_spaces = normalized_name.replace(' ', '')
-            field_mapping[no_spaces] = field.api_name
-            field_mapping[no_spaces.lower()] = field.api_name
+            field_mapping[no_spaces] = field_value
+            field_mapping[no_spaces.lower()] = field_value
             
             # 2. Replace spaces with underscores: "Appt Date" -> "Appt_Date"
             with_underscores = normalized_name.replace(' ', '_')
-            field_mapping[with_underscores] = field.api_name
-            field_mapping[with_underscores.lower()] = field.api_name
+            field_mapping[with_underscores] = field_value
+            field_mapping[with_underscores.lower()] = field_value
             
             # 3. Replace spaces with dashes: "Appt Date" -> "Appt-Date"
             with_dashes = normalized_name.replace(' ', '-')
-            field_mapping[with_dashes] = field.api_name
-            field_mapping[with_dashes.lower()] = field.api_name
+            field_mapping[with_dashes] = field_value
+            field_mapping[with_dashes.lower()] = field_value
             
             # 4. CamelCase variations: "Appt Date" -> "apptDate"
             words = normalized_name.split()
             if len(words) > 1:
                 camel_case = words[0].lower() + ''.join(word.capitalize() for word in words[1:])
-                field_mapping[camel_case] = field.api_name
-                field_mapping[camel_case.lower()] = field.api_name
+                field_mapping[camel_case] = field_value
+                field_mapping[camel_case.lower()] = field_value
             
             # 5. Handle dash variations (frontend has dashes, EMR field doesn't)
             # Remove dashes from EMR field name: "Appt-Date" -> "ApptDate"
             no_dashes = normalized_name.replace('-', '')
-            field_mapping[no_dashes] = field.api_name
-            field_mapping[no_dashes.lower()] = field.api_name
+            field_mapping[no_dashes] = field_value
+            field_mapping[no_dashes.lower()] = field_value
             
             # 6. Handle underscore variations (frontend has underscores, EMR field doesn't)
             # Remove underscores from EMR field name: "Appt_Date" -> "ApptDate"
             no_underscores = normalized_name.replace('_', '')
-            field_mapping[no_underscores] = field.api_name
-            field_mapping[no_underscores.lower()] = field.api_name
+            field_mapping[no_underscores] = field_value
+            field_mapping[no_underscores.lower()] = field_value
             
             # 7. Replace dashes with spaces: "Appt-Date" -> "Appt Date"
             dash_to_space = normalized_name.replace('-', ' ')
-            field_mapping[dash_to_space] = field.api_name
-            field_mapping[dash_to_space.lower()] = field.api_name
+            field_mapping[dash_to_space] = field_value
+            field_mapping[dash_to_space.lower()] = field_value
             
             # 8. Replace underscores with spaces: "Appt_Date" -> "Appt Date"
             underscore_to_space = normalized_name.replace('_', ' ')
-            field_mapping[underscore_to_space] = field.api_name
-            field_mapping[underscore_to_space.lower()] = field.api_name
+            field_mapping[underscore_to_space] = field_value
+            field_mapping[underscore_to_space.lower()] = field_value
             
-            # 9. Handle extra spaces around dashes: "Appt- Date", "Appt -Date", "Appt - Date"
-            # Normalize spaces around dashes: "Appt - Date" -> "Appt-Date"
+            # 9. Handle extra spaces around dashes
             normalized_dash = normalized_name.replace(' - ', '-').replace(' -', '-').replace('- ', '-')
             if normalized_dash != normalized_name:
-                field_mapping[normalized_dash] = field.api_name
-                field_mapping[normalized_dash.lower()] = field.api_name
+                field_mapping[normalized_dash] = field_value
+                field_mapping[normalized_dash.lower()] = field_value
             
-            # 10. Handle extra spaces around underscores: "Appt_ Date", "Appt _Date", "Appt _ Date"
-            # Normalize spaces around underscores: "Appt _ Date" -> "Appt_Date"
+            # 10. Handle extra spaces around underscores
             normalized_underscore = normalized_name.replace(' _ ', '_').replace(' _', '_').replace('_ ', '_')
             if normalized_underscore != normalized_name:
-                field_mapping[normalized_underscore] = field.api_name
-                field_mapping[normalized_underscore.lower()] = field.api_name
+                field_mapping[normalized_underscore] = field_value
+                field_mapping[normalized_underscore.lower()] = field_value
     
     return field_mapping
+
+def _create_field_type_mapping(emr_fields):
+    """Create smart field type mapping that handles various field name formats for results"""
+    return _create_field_mapping(emr_fields, return_type="type")
 
 def _find_matching_api_name(key, field_mapping):
     """Smart function to find matching api_name with space normalization"""
@@ -538,12 +543,18 @@ def create_session(db: Session, user_id: UUID, **session_data):
     # Create session using raw SQL - only save fields that exist in sessions table
     from sqlalchemy import text
     
-    # Get all existing columns from sessions table
-    result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'"))
-    existing_columns = {row[0] for row in result.fetchall()}
+    # Get all existing columns and their types from sessions table
+    result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'sessions'"))
+    columns_info = {row[0]: row[1] for row in result.fetchall()}
+    existing_columns = set(columns_info.keys())
     
     # Filter to only include fields that exist in the sessions table
     valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
+    
+    # Handle empty strings for timestamp fields
+    for key, value in valid_data.items():
+        if value == '' and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+            valid_data[key] = None
     
     if not valid_data:
         raise Exception("No valid fields to insert")
@@ -566,7 +577,7 @@ def create_session(db: Session, user_id: UUID, **session_data):
     return SessionResult(**dict(session_data._mapping))
 
 def get_session(db: Session, session_id: UUID):
-    """Get session by ID with all dynamic fields"""
+    """Get session by ID"""
     from sqlalchemy import text
     
     query = text("SELECT * FROM sessions WHERE id = :session_id")
@@ -576,19 +587,16 @@ def get_session(db: Session, session_id: UUID):
     if not session_data:
         return None
     
-    # Convert Row object to dictionary
-    session_dict = dict(session_data._mapping)
-    
     # Create a simple object with all the data
     class SessionResult:
         def __init__(self, **kwargs):
             for key, value in kwargs.items():
                 setattr(self, key, value)
     
-    return SessionResult(**session_dict)
+    return SessionResult(**dict(session_data._mapping))
 
 def get_sessions_by_user(db: Session, user_id: UUID):
-    """Get all sessions for a specific user with all dynamic fields"""
+    """Get all sessions for a specific user"""
     from sqlalchemy import text
     
     query = text("SELECT * FROM sessions WHERE user_id = :user_id")
@@ -597,17 +605,16 @@ def get_sessions_by_user(db: Session, user_id: UUID):
     
     sessions = []
     for session_data in sessions_data:
-        session_dict = dict(session_data._mapping)
         class SessionResult:
             def __init__(self, **kwargs):
                 for key, value in kwargs.items():
                     setattr(self, key, value)
-        sessions.append(SessionResult(**session_dict))
+        sessions.append(SessionResult(**dict(session_data._mapping)))
     
     return sessions
 
 def get_all_sessions(db: Session):
-    """Get all sessions (for super admin) with all dynamic fields"""
+    """Get all sessions (for super admin)"""
     from sqlalchemy import text
     
     query = text("SELECT * FROM sessions")
@@ -616,17 +623,16 @@ def get_all_sessions(db: Session):
     
     sessions = []
     for session_data in sessions_data:
-        session_dict = dict(session_data._mapping)
         class SessionResult:
             def __init__(self, **kwargs):
                 for key, value in kwargs.items():
                     setattr(self, key, value)
-        sessions.append(SessionResult(**session_dict))
+        sessions.append(SessionResult(**dict(session_data._mapping)))
     
     return sessions
 
 def get_sessions_by_emr_type(db: Session, emr_type_id: UUID):
-    """Get all sessions for a specific EMR type with all dynamic fields"""
+    """Get all sessions for a specific EMR type"""
     from sqlalchemy import text
     
     query = text("SELECT * FROM sessions WHERE emr_type_id = :emr_type_id")
@@ -635,17 +641,16 @@ def get_sessions_by_emr_type(db: Session, emr_type_id: UUID):
     
     sessions = []
     for session_data in sessions_data:
-        session_dict = dict(session_data._mapping)
         class SessionResult:
             def __init__(self, **kwargs):
                 for key, value in kwargs.items():
                     setattr(self, key, value)
-        sessions.append(SessionResult(**session_dict))
+        sessions.append(SessionResult(**dict(session_data._mapping)))
     
     return sessions
 
 def get_sessions_by_client(db: Session, client_id: UUID):
-    """Get all sessions for a specific client with all dynamic fields"""
+    """Get all sessions for a specific client"""
     from sqlalchemy import text
     
     query = text("SELECT * FROM sessions WHERE client_id = :client_id")
@@ -654,12 +659,11 @@ def get_sessions_by_client(db: Session, client_id: UUID):
     
     sessions = []
     for session_data in sessions_data:
-        session_dict = dict(session_data._mapping)
         class SessionResult:
             def __init__(self, **kwargs):
                 for key, value in kwargs.items():
                     setattr(self, key, value)
-        sessions.append(SessionResult(**session_dict))
+        sessions.append(SessionResult(**dict(session_data._mapping)))
     
     return sessions
 
@@ -690,12 +694,18 @@ def update_session(db: Session, session_id: UUID, **session_data):
             # Keep original key if no mapping found
             transformed_data[key] = value
     
-    # Get all existing columns from sessions table
-    result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'"))
-    existing_columns = {row[0] for row in result.fetchall()}
+    # Get all existing columns and their types from sessions table
+    result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'sessions'"))
+    columns_info = {row[0]: row[1] for row in result.fetchall()}
+    existing_columns = set(columns_info.keys())
     
     # Filter to only include fields that exist in the sessions table
     valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
+    
+    # Handle empty strings for timestamp fields
+    for key, value in valid_data.items():
+        if value == '' and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+            valid_data[key] = None
     
     # Build the UPDATE query
     if not valid_data:

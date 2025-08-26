@@ -52,6 +52,111 @@ class DeleteResultRequest(BaseModel):
     value: str
 
 # create_chunks function to split HTML content into chunks its should fit within the token limit
+def enhance_response_with_api_names(response_data: dict, db: Session) -> dict:
+    """Enhance AI response by adding api_name from emrtypefields for each field"""
+    try:
+        # Get all EMR type fields from database
+        from ..models import EMRTypeField
+        emr_fields = db.query(EMRTypeField).all()
+        
+        # Create smart field mapping for name to api_name
+        field_mapping = {}
+        for field in emr_fields:
+            if field.api_name:
+                # Normalize the field name to ensure single spaces between words
+                normalized_name = ' '.join(field.name.split())
+                
+                # Store normalized name and lowercase version
+                field_mapping[normalized_name] = field.api_name
+                field_mapping[normalized_name.lower()] = field.api_name
+                
+                # Create variations for flexible matching
+                # 1. Remove spaces: "Appt Date" -> "ApptDate"
+                no_spaces = normalized_name.replace(' ', '')
+                field_mapping[no_spaces] = field.api_name
+                field_mapping[no_spaces.lower()] = field.api_name
+                
+                # 2. Replace spaces with underscores: "Appt Date" -> "Appt_Date"
+                with_underscores = normalized_name.replace(' ', '_')
+                field_mapping[with_underscores] = field.api_name
+                field_mapping[with_underscores.lower()] = field.api_name
+                
+                # 3. Replace spaces with dashes: "Appt Date" -> "Appt-Date"
+                with_dashes = normalized_name.replace(' ', '-')
+                field_mapping[with_dashes] = field.api_name
+                field_mapping[with_dashes.lower()] = field.api_name
+                
+                # 4. CamelCase variations: "Appt Date" -> "apptDate"
+                words = normalized_name.split()
+                if len(words) > 1:
+                    camel_case = words[0].lower() + ''.join(word.capitalize() for word in words[1:])
+                    field_mapping[camel_case] = field.api_name
+                    field_mapping[camel_case.lower()] = field.api_name
+                
+                # 5. Handle dash variations
+                no_dashes = normalized_name.replace('-', '')
+                field_mapping[no_dashes] = field.api_name
+                field_mapping[no_dashes.lower()] = field.api_name
+                
+                # 6. Handle underscore variations
+                no_underscores = normalized_name.replace('_', '')
+                field_mapping[no_underscores] = field.api_name
+                field_mapping[no_underscores.lower()] = field.api_name
+                
+                # 7. Replace dashes with spaces
+                dash_to_space = normalized_name.replace('-', ' ')
+                field_mapping[dash_to_space] = field.api_name
+                field_mapping[dash_to_space.lower()] = field.api_name
+                
+                # 8. Replace underscores with spaces
+                underscore_to_space = normalized_name.replace('_', ' ')
+                field_mapping[underscore_to_space] = field.api_name
+                field_mapping[underscore_to_space.lower()] = field.api_name
+        
+        # Enhance the response data with api_name
+        enhanced_response = {}
+        for field_key, field_data in response_data.items():
+            # Find matching api_name using smart matching
+            api_name = None
+            
+            # Try exact match first
+            if field_key in field_mapping:
+                api_name = field_mapping[field_key]
+            elif field_key.lower() in field_mapping:
+                api_name = field_mapping[field_key.lower()]
+            else:
+                # Try normalized matching
+                normalized_key = ' '.join(field_key.split())
+                if normalized_key in field_mapping:
+                    api_name = field_mapping[normalized_key]
+                elif normalized_key.lower() in field_mapping:
+                    api_name = field_mapping[normalized_key.lower()]
+                else:
+                    # Try matching against all field_mapping keys with space normalization
+                    for field_mapping_key, field_api_name in field_mapping.items():
+                        normalized_field_key = ' '.join(field_mapping_key.split())
+                        normalized_input_key = ' '.join(field_key.split())
+                        if normalized_field_key.lower() == normalized_input_key.lower():
+                            api_name = field_api_name
+                            break
+            
+            # Create enhanced field data
+            enhanced_field_data = {
+                "value": field_data.get("value", ""),
+                "api_name": api_name,  # Add api_name before source
+                "source": field_data.get("source", {})
+            }
+            
+            enhanced_response[field_key] = enhanced_field_data
+        
+        print(f"=== DEBUG: Enhanced response with api_names for {len(enhanced_response)} fields ===")
+        return enhanced_response
+        
+    except Exception as e:
+        print(f"=== DEBUG: Error enhancing response with api_names: {str(e)} ===")
+        # Return original response if enhancement fails
+        return response_data
+
 def clean_ai_response(response: str) -> str:
     """Clean and validate AI response to ensure valid JSON"""
     if not response or not response.strip():
@@ -462,8 +567,11 @@ HTML CONTENT: {html_content_for_gpt}"""
             # Clean and validate the response before saving
             cleaned_response = clean_ai_response(result)
             
+            # Enhance the response with api_names
+            enhanced_response_data = enhance_response_with_api_names(json.loads(cleaned_response), db)
+            
             # Save the cleaned response to the database
-            update_emr_type(db, emr_type_id, response=cleaned_response, status='generated')
+            update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
             print(f"=== DEBUG: Updated EMR type status to 'Generated' ===")
 
             return {"result": result}
@@ -483,8 +591,11 @@ HTML CONTENT: {html_content_for_gpt}"""
         # Clean and validate the response before saving
         cleaned_response = clean_ai_response(combined_response)
         
+        # Enhance the response with api_names
+        enhanced_response_data = enhance_response_with_api_names(json.loads(cleaned_response), db)
+        
         # Save the cleaned response to the database
-        update_emr_type(db, emr_type_id, response=cleaned_response, status='generated')
+        update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
         print(f"=== DEBUG: Updated EMR type status to 'Generated' ===")
 
         return {"result": combined_response}
