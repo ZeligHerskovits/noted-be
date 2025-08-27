@@ -738,7 +738,9 @@ def update_session(db: Session, session_id: UUID, **session_data):
 
 def delete_session(db: Session, session_id: UUID):
     """Delete a session"""
-    session = get_session(db, session_id)
+    from .models import Session as SessionModel
+    
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
     if not session:
         return False
     
