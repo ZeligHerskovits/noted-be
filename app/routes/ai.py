@@ -894,7 +894,9 @@ async def save_selected_chunk(
     }
 
     # Save the generated JSON instructions to the EMR type
-    update_emr_type(db, emr_type_id, instructions=json_instructions)
+    import json
+    json_instructions_string = json.dumps(json_instructions)
+    update_emr_type(db, emr_type_id, instructions=json_instructions_string)
     print(f"=== DEBUG: Saved generated JSON instructions to EMR type ===")
 
     # Update status to 'analyzed' after successful analysis

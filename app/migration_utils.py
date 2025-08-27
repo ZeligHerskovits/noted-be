@@ -207,6 +207,23 @@ class AutoMigrationManager:
         safe_field_name = self.sanitize_field_name(field_name)
         revision_id = self._generate_short_revision_id(f"add_{field_name}", "sessions")
         
+        # Map field types to proper SQLAlchemy column types
+        type_mapping = {
+            'TEXT': 'Text',
+            'STRING': 'String',
+            'INTEGER': 'Integer',
+            'BOOLEAN': 'Boolean',
+            'DATETIME': 'DateTime',
+            'DATE': 'Date',
+            'FLOAT': 'Float',
+            'DECIMAL': 'Numeric',
+            'JSON': 'JSON',
+            'JSONB': 'JSONB'
+        }
+        
+        # Get the proper SQLAlchemy type with correct casing
+        sqlalchemy_type = type_mapping.get(field_type.upper(), 'Text')
+        
         migration_content = f'''"""Auto-generated migration: Add {field_name} field to sessions table
 
 Revision ID: {revision_id}
@@ -225,7 +242,7 @@ depends_on = None
 
 def upgrade() -> None:
     """Add {field_name} field to sessions table"""
-    op.add_column('sessions', sa.Column('{safe_field_name}', sa.{field_type}(), nullable=True))
+    op.add_column('sessions', sa.Column('{safe_field_name}', sa.{sqlalchemy_type}(), nullable=True))
 
 def downgrade() -> None:
     """Remove {field_name} field from sessions table"""
