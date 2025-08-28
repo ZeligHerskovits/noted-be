@@ -660,7 +660,7 @@ async def analyze_emr_type(
         def normalize_for_comparison(name):
             return name.lower().replace(' ', '').replace('-', '').replace('_', '')
 
-        missing_fields = [field.name for field in all_fields if field.analyzable != "not for analyzing" 
+        missing_fields = [field.name for field in all_fields if field.analyzable != "not_for_analyzing" 
                          and normalize_for_comparison(field.name) not in
                          [normalize_for_comparison(name) for name in existing_field_names]]
 
@@ -688,6 +688,15 @@ Please extract ONLY the fields specified in the instructions above and provide t
 IMPORTANT: Respond with ONLY the field names and values and label in this exact format:
 FieldName: Value (label: ActualLabelFromHTML)
 FieldName: Value (label: ActualLabelFromHTML)
+
+CRITICAL FORMATTING RULES:
+- Field names should NEVER be inside quotation marks - use them as plain text
+- Do NOT wrap field names in quotes like "FieldName" - use FieldName directly
+- Do NOT include any JSON formatting, code blocks, or fake field names
+- Do NOT include any fields that were not actually found or analyzed
+- Only include fields that were explicitly requested in the instructions
+- Do NOT add any formatting characters like ```json, ```, or other code block markers
+- Do NOT include any fields that don't exist in the original instructions
 
 IMPORTANT: Always use the exact field names provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML.
 
