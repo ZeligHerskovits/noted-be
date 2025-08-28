@@ -14,6 +14,7 @@ import requests
 import os
 from openai import OpenAI
 from ..crud import create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session, get_all_clients
+from ..debug import debug
 
 sessions_router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
@@ -32,7 +33,7 @@ def get_session_by_id(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"GET /api/v1/sessions/{session_id} called")
+    debug("GET /api/v1/sessions/{} called", session_id)
     try:
 
         clients = get_all_clients(db)
@@ -73,7 +74,7 @@ def list_sessions(
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
     try:
-        print(f"GET /api/v1/sessions called with emr_type_id: {emr_type_id}, client_id: {client_id}")
+        debug("GET /api/v1/sessions called with emr_type_id: {}, client_id: {}", emr_type_id, client_id)
         
         clients = get_all_clients(db)
 
@@ -118,7 +119,7 @@ def create_new_session(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"POST /api/v1/sessions called with: {session}")
+    debug("POST /api/v1/sessions called with: {}", session)
     try:
         # user_id will be automatically filled from current_user.id
         session_data = session.dict()
@@ -136,7 +137,7 @@ def update_session_by_id(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"PUT /api/v1/sessions/{session_id} called with: {session}")
+    debug("PUT /api/v1/sessions/{} called with: {}", session_id, session)
     try:
         # First try to find session by ID
         db_session = get_session(db, session_id)
@@ -163,7 +164,7 @@ def delete_session_by_id(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"DELETE /api/v1/sessions/{session_id} called")
+    debug("DELETE /api/v1/sessions/{} called", session_id)
     try:
         # First try to find session by ID
         db_session = get_session(db, session_id)
@@ -191,7 +192,7 @@ def generate_session(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"POST /api/v1/sessions/{session_id}/generate called")
+    debug("POST /api/v1/sessions/{}/generate called", session_id)
     try:
         # Get the session
         session = get_session(db, session_id)

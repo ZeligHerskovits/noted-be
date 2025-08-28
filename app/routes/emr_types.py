@@ -30,6 +30,7 @@ from ..crud import (
     create_manual_field, get_manual_field, get_all_manual_fields, get_manual_fields_by_emr_type, update_manual_field, delete_manual_field
 )
 from ..models import EMRTypeField
+from ..debug import debug
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
 fields_router = APIRouter(prefix="/emr-types-fields", tags=["EMR Type Fields"])
@@ -204,7 +205,7 @@ def update_result_instructions(
     
     # Update EMR type status to 'draft' since instructions were changed
     update_emr_type(db, emr_type_id, status='draft')
-    print(f"=== DEBUG: Updated EMR type status to 'draft' after instruction change ===")
+    debug("=== DEBUG: Updated EMR type status to 'draft' after instruction change ===")
     
     return {
         "message": "Instructions updated successfully"
@@ -244,7 +245,7 @@ def update_result_status(
     db.commit()
     db.refresh(result)
     
-    print(f"=== DEBUG: Updated status for {request.key} to {result.status} ===")
+    debug("=== DEBUG: Updated status for {} to {} ===", request.key, result.status)
     
     return {
         "message": "Status updated successfully",
@@ -299,7 +300,7 @@ def back_action_emr_type(
     
     # Verify the update worked by fetching fresh data
     updated_emr = get_emr_type(db, emr_type_id)
-    print(f"=== DEBUG: Back action - Status: {updated_emr.status}, Total chunks: {updated_emr.total_chunks}, Processed chunks: {updated_emr.processed_chunks} ===")
+    debug("=== DEBUG: Back action - Status: {}, Total chunks: {}, Processed chunks: {} ===", updated_emr.status, updated_emr.total_chunks, updated_emr.processed_chunks)
     
     return {
         "message": f"EMR type status restored to '{new_status}' and processed_chunks reset to {total_chunks}",

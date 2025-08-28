@@ -17,6 +17,7 @@ from .routes import ai
 from .routes import sessions
 from .models import Base
 from .db import engine
+from .debug import debug
 
 # Custom middleware to handle large file uploads
 class LargeFileUploadMiddleware(BaseHTTPMiddleware):
@@ -44,23 +45,23 @@ class LargeFileUploadMiddleware(BaseHTTPMiddleware):
 load_dotenv()
 
 # Debug: Check if environment variables are loaded
-print("=== DEBUG: Environment Variables ===")
-print("DATABASE_URL:", os.getenv("DATABASE_URL")[:50] + "..." if os.getenv("DATABASE_URL") else "NOT SET")
-print("SECRET_KEY:", os.getenv("SECRET_KEY")[:10] + "..." if os.getenv("SECRET_KEY") else "NOT SET")
-print("ALGORITHM:", os.getenv("ALGORITHM"))
-print("SMTP_SERVER:", os.getenv("SMTP_SERVER"))
-print("SMTP_PORT:", os.getenv("SMTP_PORT"))
-print("SMTP_USERNAME:", os.getenv("SMTP_USERNAME"))
-print("SMTP_PASSWORD:", os.getenv("SMTP_PASSWORD")[:10] + "..." if os.getenv("SMTP_PASSWORD") else "NOT SET")
-print("FROM_EMAIL:", os.getenv("FROM_EMAIL"))
-print("FRONTEND_URL:", os.getenv("FRONTEND_URL"))
-print("ENV:", os.getenv("ENV"))
-print("AWS_ACCESS_KEY_ID:", os.getenv("AWS_ACCESS_KEY_ID")[:10] + "..." if os.getenv("AWS_ACCESS_KEY_ID") else "NOT SET")
-print("AWS_SECRET_ACCESS_KEY:", os.getenv("AWS_SECRET_ACCESS_KEY")[:10] + "..." if os.getenv("AWS_SECRET_ACCESS_KEY") else "NOT SET")
-print("AWS_REGION:", os.getenv("AWS_REGION"))
-print("S3_BUCKET_NAME:", os.getenv("S3_BUCKET_NAME"))
-print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY")[:10] + "..." if os.getenv("OPENAI_API_KEY") else "NOT SET")
-print("=== END DEBUG ===")
+debug("=== DEBUG: Environment Variables ===")
+debug("DATABASE_URL: {}", os.getenv("DATABASE_URL")[:50] + "..." if os.getenv("DATABASE_URL") else "NOT SET")
+debug("SECRET_KEY: {}", os.getenv("SECRET_KEY")[:10] + "..." if os.getenv("SECRET_KEY") else "NOT SET")
+debug("ALGORITHM: {}", os.getenv("ALGORITHM"))
+debug("SMTP_SERVER: {}", os.getenv("SMTP_SERVER"))
+debug("SMTP_PORT: {}", os.getenv("SMTP_PORT"))
+debug("SMTP_USERNAME: {}", os.getenv("SMTP_USERNAME"))
+debug("SMTP_PASSWORD: {}", os.getenv("SMTP_PASSWORD")[:10] + "..." if os.getenv("SMTP_PASSWORD") else "NOT SET")
+debug("FROM_EMAIL: {}", os.getenv("FROM_EMAIL"))
+debug("FRONTEND_URL: {}", os.getenv("FRONTEND_URL"))
+debug("ENV: {}", os.getenv("ENV"))
+debug("AWS_ACCESS_KEY_ID: {}", os.getenv("AWS_ACCESS_KEY_ID")[:10] + "..." if os.getenv("AWS_ACCESS_KEY_ID") else "NOT SET")
+debug("AWS_SECRET_ACCESS_KEY: {}", os.getenv("AWS_SECRET_ACCESS_KEY")[:10] + "..." if os.getenv("AWS_SECRET_ACCESS_KEY") else "NOT SET")
+debug("AWS_REGION: {}", os.getenv("AWS_REGION"))
+debug("S3_BUCKET_NAME: {}", os.getenv("S3_BUCKET_NAME"))
+debug("OPENAI_API_KEY: {}", os.getenv("OPENAI_API_KEY")[:10] + "..." if os.getenv("AWS_SECRET_ACCESS_KEY") else "NOT SET")
+debug("=== END DEBUG ===")
 
 # Auto-sync migrations on startup
 def auto_sync_migrations():
@@ -71,7 +72,7 @@ def auto_sync_migrations():
         
         # Only run on local development (not on server)
         if os.getenv("ENV") == "development":
-            print("🔄 Auto-syncing migrations from git...")
+            debug("🔄 Auto-syncing migrations from git...")
             
             # Pull latest changes from git
             result = subprocess.run(
@@ -81,9 +82,9 @@ def auto_sync_migrations():
                 text=True
             )
             if result.returncode == 0:
-                print("✅ Successfully pulled latest changes from git")
+                debug("✅ Successfully pulled latest changes from git")
             else:
-                print(f"⚠️ Could not pull from git: {result.stderr}")
+                debug("⚠️ Could not pull from git: {}", result.stderr)
             
             # Apply any new migrations
             result = subprocess.run(
@@ -93,16 +94,16 @@ def auto_sync_migrations():
                 text=True
             )
             if result.returncode == 0:
-                print("✅ Successfully applied migrations")
+                debug("✅ Successfully applied migrations")
             else:
-                print(f"⚠️ Could not apply migrations: {result.stderr}")
+                debug("⚠️ Could not apply migrations: {}", result.stderr)
                 
-            print("🔄 Auto-sync completed")
+            debug("🔄 Auto-sync completed")
         else:
-            print("🔄 Skipping auto-sync (not in development mode)")
+            debug("🔄 Skipping auto-sync (not in development mode)")
             
     except Exception as e:
-        print(f"⚠️ Auto-sync failed: {e}")
+        debug("⚠️ Auto-sync failed: {}", e)
 
 # Run auto-sync on startup
 auto_sync_migrations()

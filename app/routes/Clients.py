@@ -9,6 +9,7 @@ from app.routes.auth import get_current_user_with_role
 from datetime import date
 from uuid import UUID
 import traceback
+from ..debug import debug
 
 router = APIRouter(prefix="/api/Clients", tags=["Clients"])
 
@@ -27,7 +28,7 @@ def get_Client(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"GET /api/Clients/{Client_id} called")
+    debug("GET /api/Clients/{} called", Client_id)
     try:
         # First try to find Client by ID only
         db_Client = db.query(Client).filter(Client.id == Client_id).first()
@@ -50,7 +51,7 @@ def list_Clients(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print("GET /api/Clients called")
+    debug("GET /api/Clients called")
     try:
         if current_user.role_id == 3:  # super_admin
             Clients = db.query(Client).all()
@@ -68,7 +69,7 @@ def create_Client(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
 ):
-    print(f"POST /api/Clients called with: {client_data}")
+    debug("POST /api/Clients called with: {}", client_data)
     try:
         client_dict = client_data.dict(exclude={"user_id"})  # Remove user_id from request
         client_dict["user_id"] = current_user.id  # Assign from token/session
@@ -85,7 +86,7 @@ def create_Client(
 
 @router.put("/{Client_id}", response_model=ClientResponse)
 def update_Client(Client_id: UUID, client_update: ClientUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
-    print(f"PUT /api/Clients/{Client_id} called with: {client_update}")
+    debug("PUT /api/Clients/{} called with: {}", Client_id, client_update)
     try:
         # First try to find Client by ID only
         db_Client = db.query(Client).filter(Client.id == Client_id).first()
@@ -110,7 +111,7 @@ def update_Client(Client_id: UUID, client_update: ClientUpdate, db: Session = De
 
 @router.delete("/{Client_id}", response_model=dict)
 def delete_Client(Client_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))):
-    print(f"DELETE /api/Clients/{Client_id} called")
+    debug("DELETE /api/Clients/{} called", Client_id)
     try:
         db_Client = db.query(Client).filter(Client.id == Client_id, Client.user_id == current_user.id).first()
         if not db_Client:

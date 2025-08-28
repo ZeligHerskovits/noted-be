@@ -10,6 +10,7 @@ import os
 import subprocess
 from uuid import UUID
 from typing import List, Optional
+from .debug import debug
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -151,10 +152,10 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    response: Optional[str] = None, status: Optional[str] = None,
                    previous_status: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None):
-    print(f"=== DEBUG: update_emr_type called with emr_type_id={emr_type_id}, processed_chunks={processed_chunks}, total_chunks={total_chunks} ===")
+    debug("=== DEBUG: update_emr_type called with emr_type_id={}, processed_chunks={}, total_chunks={} ===", emr_type_id, processed_chunks, total_chunks)
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
-        print(f"=== DEBUG: EMR type not found for id={emr_type_id} ===")
+        debug("=== DEBUG: EMR type not found for id={} ===", emr_type_id)
         return None
 
     if name is not None:
@@ -175,16 +176,16 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.previous_status = previous_status
     if total_chunks is not None:
         emr_type.total_chunks = total_chunks
-        print(f"=== DEBUG: Updated total_chunks to {total_chunks} ===")
+        debug("=== DEBUG: Updated total_chunks to {} ===", total_chunks)
     if processed_chunks is not None:
         emr_type.processed_chunks = processed_chunks
-        print(f"=== DEBUG: Updated processed_chunks to {processed_chunks} ===")
+        debug("=== DEBUG: Updated processed_chunks to {} ===", processed_chunks)
 
-    print(f"=== DEBUG: About to commit database changes ===")
+    debug("=== DEBUG: About to commit database changes ===")
     db.commit()
-    print(f"=== DEBUG: Database commit completed ===")
+    debug("=== DEBUG: Database commit completed ===")
     db.refresh(emr_type)
-    print(f"=== DEBUG: Database refresh completed, current processed_chunks={emr_type.processed_chunks} ===")
+    debug("=== DEBUG: Database refresh completed, current processed_chunks={} ===", emr_type.processed_chunks)
     return emr_type
 
 def delete_emr_type(db: Session, emr_type_id: UUID):
@@ -228,7 +229,7 @@ def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optiona
             # Create migration file to add field to sessions table with the correct type
             migration_success = migration_manager.create_field_migration(api_name, type)
             if migration_success:
-                print(f"✅ Successfully created migration for field '{name}'")
+                debug("✅ Successfully created migration for field '{}'", name)
                 
                 # Auto-apply the migration
                 try:
@@ -240,33 +241,33 @@ def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optiona
                         timeout=30
                     )
                     if result.returncode == 0:
-                        print(f"🎉 Successfully applied migration! Field '{api_name}' added to sessions table")
+                        debug("🎉 Successfully applied migration! Field '{}' added to sessions table", api_name)
                         
                         # Auto-commit migration to git for sync
                         try:
                             subprocess.run(['git', 'add', 'alembic/versions/'], cwd=os.getcwd(), capture_output=True)
                             subprocess.run(['git', 'commit', '-m', f'Auto-commit: Add field {name} to sessions'], cwd=os.getcwd(), capture_output=True)
                             subprocess.run(['git', 'push', 'origin', 'dev'], cwd=os.getcwd(), capture_output=True)
-                            print("✅ Migration auto-committed to git for sync")
+                            debug("✅ Migration auto-committed to git for sync")
                         except Exception as e:
-                            print(f"⚠️ Could not auto-commit migration: {e}")
+                            debug("⚠️ Could not auto-commit migration: {}", e)
                     else:
                         # Sessions column creation failed - ROLLBACK everything
-                        print(f"❌ Sessions column creation failed: {result.stderr}")
+                        debug("❌ Sessions column creation failed: {}", result.stderr)
                         db.rollback()
                         raise Exception("Failed to create sessions column")
                 except Exception as e:
                     # Sessions column creation failed - ROLLBACK everything
-                    print(f"❌ Sessions column creation failed: {str(e)}")
+                    debug("❌ Sessions column creation failed: {}", str(e))
                     db.rollback()
                     raise Exception("Failed to create sessions column")
             else:
                 # Migration creation failed - ROLLBACK everything
-                print(f"❌ Failed to create migration for field '{name}'")
+                debug("❌ Failed to create migration for field '{}'", name)
                 db.rollback()
                 raise Exception("Failed to create migration")
         else:
-            print(f"ℹ️  Field '{api_name}' already exists in sessions table")
+            debug("ℹ️  Field '{}' already exists in sessions table", api_name)
         
         # Step 3: Both succeeded - COMMIT everything
         db.commit()
@@ -276,7 +277,7 @@ def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optiona
     except Exception as e:
         # ANY error - ROLLBACK everything
         db.rollback()
-        print(f"❌ Transaction failed: {str(e)}")
+        debug("❌ Transaction failed: {}", str(e))
         raise Exception("Failed to create field. Please try again.")
 
 def get_emr_type_field(db: Session, field_id: UUID):
@@ -330,7 +331,7 @@ def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = Non
                         "sessions"
                     )
                     if migration_success:
-                        print(f"✅ Successfully created migration to rename column '{actual_old_column_name}' to '{new_sanitized_name}' in sessions table")
+                        debug("✅ Successfully created migration to rename column '{}' to '{}' in sessions table", actual_old_column_name, new_sanitized_name)
                         
                         # Auto-apply the migration
                         try:
@@ -344,34 +345,34 @@ def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = Non
                                 timeout=30
                             )
                             if result.returncode == 0:
-                                print(f"🎉 Successfully applied migration! Column renamed from '{actual_old_column_name}' to '{new_sanitized_name}'")
+                                debug("🎉 Successfully applied migration! Column renamed from '{}' to '{}'", actual_old_column_name, new_sanitized_name)
                                 
                                 # Auto-commit migration to git for sync
                                 try:
                                     subprocess.run(['git', 'add', 'alembic/versions/'], cwd=os.getcwd(), capture_output=True)
                                     subprocess.run(['git', 'commit', '-m', f'Auto-commit: Rename field {old_name} to {name}'], cwd=os.getcwd(), capture_output=True)
                                     subprocess.run(['git', 'push', 'origin', 'dev'], cwd=os.getcwd(), capture_output=True)
-                                    print("✅ Migration auto-committed to git for sync")
+                                    debug("✅ Migration auto-committed to git for sync")
                                 except Exception as e:
-                                    print(f"⚠️ Could not auto-commit migration: {e}")
+                                    debug("⚠️ Could not auto-commit migration: {}", e)
                             else:
                                 # Sessions column rename failed - ROLLBACK everything
-                                print(f"❌ Sessions column rename failed: {result.stderr}")
+                                debug("❌ Sessions column rename failed: {}", result.stderr)
                                 db.rollback()
                                 raise Exception("Failed to rename sessions column")
                         except Exception as e:
                             # Sessions column rename failed - ROLLBACK everything
-                            print(f"❌ Sessions column rename failed: {str(e)}")
+                            debug("❌ Sessions column rename failed: {}", str(e))
                             db.rollback()
                             raise Exception("Failed to rename sessions column")
                     else:
                         # Migration creation failed - ROLLBACK everything
-                        print(f"❌ Failed to create migration for column rename")
+                        debug("❌ Failed to create migration for column rename")
                         db.rollback()
                         raise Exception("Failed to create rename migration")
             except Exception as e:
                 # Column rename failed - ROLLBACK everything
-                print(f"❌ Column rename failed: {str(e)}")
+                debug("❌ Column rename failed: {}", str(e))
                 db.rollback()
                 raise Exception("Failed to rename column")
 
@@ -383,7 +384,7 @@ def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = Non
     except Exception as e:
         # ANY error - ROLLBACK everything
         db.rollback()
-        print(f"❌ Transaction failed: {str(e)}")
+        debug("❌ Transaction failed: {}", str(e))
         raise Exception("Failed to update field. Please try again.")
 
 def delete_emr_type_field(db: Session, field_id: UUID):

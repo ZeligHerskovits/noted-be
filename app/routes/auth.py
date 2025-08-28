@@ -15,6 +15,7 @@ import subprocess
 import sys
 from ..models import Company, Role, User
 import uuid
+from ..debug import debug
 
 router = APIRouter()
 
@@ -108,12 +109,12 @@ def send_email_via_msmtp(to_email, subject, body):
                 stderr=subprocess.PIPE
             )
             stdout, stderr = process.communicate(message.encode())
-            print("msmtp stdout:", stdout.decode())
-            print("msmtp stderr:", stderr.decode())
+            debug("msmtp stdout: {}", stdout.decode())
+            debug("msmtp stderr: {}", stderr.decode())
             if process.returncode != 0:
                 raise Exception(f"msmtp failed: {stderr.decode()}")
         except Exception as e:
-            print(f"msmtp error: {e}")
+            debug("msmtp error: {}", e)
             raise
     else:
         # Use smtplib for local development (Windows, Mac, etc.)
@@ -126,9 +127,9 @@ def send_email_via_msmtp(to_email, subject, body):
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.sendmail(FROM_EMAIL, to_email, msg.as_string())
-            print("Email sent via smtplib (local)")
+            debug("Email sent via smtplib (local)")
         except Exception as e:
-            print(f"smtplib error: {e}")
+            debug("smtplib error: {}", e)
             raise
 
 def send_otp_email(to_email, otp_code):
@@ -247,8 +248,8 @@ def verify_otp(request: OTPVerifyRequest, response: Response, db: Session = Depe
 
 @router.post("/auth/reset-password")
 def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    print("SECRET_KEY in reset-password:", SECRET_KEY)
-    print("Received token:", request.token)
+    debug("SECRET_KEY in reset-password: {}", SECRET_KEY)
+    debug("Received token: {}", request.token)
     # Decode and verify the token to get the user's email or id
     try:
         payload = jwt.decode(request.token, SECRET_KEY, algorithms=["HS256"])
@@ -270,7 +271,7 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
 
 @router.post("/auth/forgot-password")
 def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    print("SECRET_KEY in forgot-password:", SECRET_KEY)
+    debug("SECRET_KEY in forgot-password: {}", SECRET_KEY)
     user = get_user_by_email(db, request.email)
     if not user:
         raise HTTPException(status_code=400, detail="User not found")

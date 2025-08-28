@@ -22,6 +22,7 @@ import mimetypes
 from bs4 import BeautifulSoup
 from ..models import EMRTypeResult
 from ..schemas import SaveSelectedChunkRequest
+from ..debug import debug
 load_dotenv()
 
 
@@ -79,11 +80,11 @@ def enhance_response_with_api_names(response_data: dict, db: Session) -> dict:
             
             enhanced_response[field_key] = enhanced_field_data
         
-        print(f"=== DEBUG: Enhanced response with api_names for {len(enhanced_response)} fields ===")
+        debug("=== DEBUG: Enhanced response with api_names for {} fields ===", len(enhanced_response))
         return enhanced_response
         
     except Exception as e:
-        print(f"=== DEBUG: Error enhancing response with api_names: {str(e)} ===")
+        debug("=== DEBUG: Error enhancing response with api_names: {}", str(e))
         # Return original response if enhancement fails
         return response_data
 
@@ -175,21 +176,21 @@ def create_chunks(html_content: str, chunk_size: int = 120000, overlap: int = 60
         chunks.append(chunk)
 
         if meaningful_content and len(meaningful_content) > 50:
-            print(f"=== DEBUG: Added chunk {len(chunks)} with {len(meaningful_content)} chars of meaningful content ===")
+            debug("=== DEBUG: Added chunk {} with {} chars of meaningful content ===")
         else:
-            print(f"=== DEBUG: Added chunk {len(chunks)} with minimal content ({len(meaningful_content)} chars) - keeping for completeness ===")
+            debug("=== DEBUG: Added chunk {} with minimal content ({} chars) - keeping for completeness ===")
 
         start = end - overlap  # Overlap with previous chunk
 
-    print(f"=== DEBUG: Created {len(chunks)} meaningful chunks from {len(html_content)} characters ===")
+    debug("=== DEBUG: Created {} meaningful chunks from {} characters ===")
 
     # Debug: Show what's in each chunk
     for i, chunk in enumerate(chunks):
         soup = BeautifulSoup(chunk, 'html.parser')
         text_content = soup.get_text().strip()
-        print(f"=== DEBUG: Chunk {i+1}: {len(chunk)} chars, meaningful text: {len(text_content)} chars ===")
-        print(f"=== DEBUG: Chunk {i+1}: starts with: {chunk[:100]}... ===")
-        print(f"=== DEBUG: Chunk {i+1}: ends with: ...{chunk[-100:]} ===")
+        debug("=== DEBUG: Chunk {}: {} chars, meaningful text: {} chars ===")
+        debug("=== DEBUG: Chunk {}: starts with: {}... ===")
+        debug("=== DEBUG: Chunk {}: ends with: ...{} ===")
 
     return chunks
 
@@ -231,18 +232,18 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
         )
 
         result = response.choices[0].message.content
-        print(f"=== DEBUG: AI Response for chunk: {result[:200]}... ===")
-        print(f"=== DEBUG: AI Response length: {len(result)} ===")
+        debug("=== DEBUG: AI Response for chunk: {}... ===")
+        debug("=== DEBUG: AI Response length: {} ===")
         return result
     except Exception as e:
-        print(f"=== DEBUG: Error processing chunk: {str(e)} ===")
-        print(f"=== DEBUG: Error type: {type(e)} ===")
+        debug("=== DEBUG: Error processing chunk: {} ===")
+        debug("=== DEBUG: Error type: {} ===")
         return ""
 
 
 async def process_chunks_async(chunks: list, prompt_template: str, emr_type_id: str = None, db: Session = None, field_instructions: str = None, field_names_str: str = None, emr_instructions: str = None) -> list:
     """Process all chunks asynchronously - MUCH FASTER than ThreadPoolExecutor"""
-    print(f"=== DEBUG: Processing {len(chunks)} chunks asynchronously ===")
+    debug("=== DEBUG: Processing {} chunks asynchronously ===")
 
     # Create async tasks for all chunks
     tasks = [
@@ -263,14 +264,14 @@ async def process_chunks_async(chunks: list, prompt_template: str, emr_type_id: 
             
             # Update progress in database if emr_type_id provided
             if emr_type_id and db:
-                print(f"=== DEBUG: About to update database with processed_chunks={completed_count} ===")
+                debug("=== DEBUG: About to update database with processed_chunks={} ===")
                 update_emr_type(db, emr_type_id, processed_chunks=completed_count, total_chunks=len(chunks))
-                print(f"=== DEBUG: Database update completed for processed_chunks={completed_count} ===")
+                debug("=== DEBUG: Database update completed for processed_chunks={} ===")
                 progress = int((completed_count / len(chunks)) * 100)
-                print(f"=== DEBUG: Progress: {progress}% ({completed_count}/{len(chunks)} chunks) ===")
+                debug("=== DEBUG: Progress: {}% ({}/{} chunks) ===")
                 
         except Exception as e:
-            print(f"=== DEBUG: Error processing chunk: {str(e)} ===")
+            debug("=== DEBUG: Error processing chunk: {} ===")
             processed_responses.append("")
             completed_count += 1
             
@@ -278,7 +279,7 @@ async def process_chunks_async(chunks: list, prompt_template: str, emr_type_id: 
             if emr_type_id and db:
                 update_emr_type(db, emr_type_id, processed_chunks=completed_count, total_chunks=len(chunks))
                 progress = int((completed_count / len(chunks)) * 100)
-                print(f"=== DEBUG: Progress after error: {progress}% ({completed_count}/{len(chunks)} chunks) ===")
+                debug("=== DEBUG: Progress after error: {}% ({}/{} chunks) ===")
 
     return processed_responses
 
@@ -330,7 +331,7 @@ def save_results_to_db_with_label(results: dict, emr_type_id: str, db: Session, 
             if existing_result.status != "confirmed":
                existing_result.label = label
             db.commit()
-            print(f"=== DEBUG: Updated {clean_key}: {value} (status: {existing_result.status}) (label: {label}) (preserved instructions) ===")
+            debug("=== DEBUG: Updated {}: {} (status: {}) (label: {}) (preserved instructions) ===")
         else:
             # Create new result with empty instructions and status
             create_emr_type_result(
@@ -341,7 +342,7 @@ def save_results_to_db_with_label(results: dict, emr_type_id: str, db: Session, 
                 status=status,
                 label=label
             )
-            print(f"=== DEBUG: Created {clean_key}: {value} (status: {status}) (label: {label}) ===")
+            debug("=== DEBUG: Created {}: {} (status: {}) (label: {}) ===")
 
 
 # Genarate Response button from fe is calling that API
@@ -387,7 +388,7 @@ async def analyze_emr_file_for_ai(
         raise HTTPException(status_code=400, detail="File URL is not a valid S3 URL")
 
     s3_key = urllib.parse.unquote(file_url[len(prefix):])
-    print(f"=== DEBUG: Loading file from S3: {s3_key} ===")
+    debug("=== DEBUG: Loading file from S3: {} ===")
     s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
     file_content = s3_response['Body'].read()
 
@@ -403,17 +404,17 @@ async def analyze_emr_file_for_ai(
     #         # Check srcdoc attribute first
     #         srcdoc = iframe.get('srcdoc')
     #         if srcdoc:
-    #             print(f"=== DEBUG: Found iframe with srcdoc content ===")
+    #             debug("=== DEBUG: Found iframe with srcdoc content ===")
     #             raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
     #         else:
     #             # Check src attribute
     #             src = iframe.get('src')
     #             if src:
-    #                 print(f"=== DEBUG: Found iframe with src: {src} ===")
+    #                 debug("=== DEBUG: Found iframe with src: {} ===")
     #             # Check inner content
     #             iframe_content = iframe.get_text(strip=True)
     #             if iframe_content:
-    #                 print(f"=== DEBUG: Found iframe with inner content ===")
+    #                 debug("=== DEBUG: Found iframe with inner content ===")
     #                 raw_html += "\n<!-- IFRAME CONTENT -->\n" + iframe_content
 
     if not file_type:
@@ -432,7 +433,7 @@ async def analyze_emr_file_for_ai(
         raise HTTPException(status_code=400, detail="No fields found to extract")
 
     # Create static instructions for AI
-    print(f"=== DEBUG: Creating static instructions with {len(field_names)} field names ===")
+    debug("=== DEBUG: Creating static instructions with {} field names ===")
     
     # Format field_names properly to avoid format string issues
     field_names_str = "\n".join([f"- {item['key']}: {item['value']}" for item in field_names])
@@ -475,11 +476,11 @@ HTML CONTENT: {html_content_for_gpt}"""
     
     # Set initial processing status
     update_emr_type(db, emr_type_id, status="processing", previous_status=previous_status, total_chunks=len(chunks), processed_chunks=0)
-    print(f"=== DEBUG: Started processing {len(chunks)} chunks for AI analysis ===")
+    debug("=== DEBUG: Started processing {} chunks for AI analysis ===")
 
     if len(chunks) == 1:
         # Single chunk - process normally
-        print("=== DEBUG: Processing single chunk for AI ===")
+        debug("=== DEBUG: Processing single chunk for AI ===")
         prompt = prompt_template.format(
             field_names_str=field_names_str,
             emr_instructions=emr.instructions,
@@ -496,7 +497,7 @@ HTML CONTENT: {html_content_for_gpt}"""
                 max_tokens=4000
             )
             result = response.choices[0].message.content
-            print(f"=== DEBUG: AI Response: {result} ===")
+            debug("=== DEBUG: AI Response: {} ===")
 
             # Clean and validate the response before saving
             cleaned_response = clean_ai_response(result)
@@ -506,17 +507,17 @@ HTML CONTENT: {html_content_for_gpt}"""
             
             # Save the cleaned response to the database
             update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
-            print(f"=== DEBUG: Updated EMR type status to 'Generated' ===")
+            debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
 
             return {"result": result}
 
         except Exception as e:
-            print(f"=== DEBUG: Error processing single chunk: {str(e)} ===")
+            debug("=== DEBUG: Error processing single chunk: {} ===")
             raise HTTPException(status_code=500, detail=f"Error processing EMR content: {str(e)}")
     
     else:
         # Multiple chunks - process asynchronously
-        print(f"=== DEBUG: Processing {len(chunks)} chunks asynchronously for AI ===")
+        debug("=== DEBUG: Processing {} chunks asynchronously for AI ===")
         chunk_responses = await process_chunks_async(chunks, prompt_template, emr_type_id, db, field_names_str=field_names_str, emr_instructions=emr.instructions)
         
         # Combine all chunk responses
@@ -530,7 +531,7 @@ HTML CONTENT: {html_content_for_gpt}"""
         
         # Save the cleaned response to the database
         update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
-        print(f"=== DEBUG: Updated EMR type status to 'Generated' ===")
+        debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
 
         return {"result": combined_response}
 
@@ -570,7 +571,7 @@ async def analyze_emr_type(
     total_chunks = emr_type.total_chunks or 0
     processed_chunks = emr_type.processed_chunks or 0
     
-    print(f"=== DEBUG: Analyze API - Status: {emr_type.status}, Total chunks: {total_chunks}, Processed chunks: {processed_chunks}, Equal: {total_chunks == processed_chunks} ===")
+    debug("=== DEBUG: Analyze API - Status: {}, Total chunks: {}, Processed chunks: {}, Equal: {} ===")
     
     if total_chunks != processed_chunks:
         # Analysis is in progress - block anyone from starting new analysis
@@ -606,7 +607,7 @@ async def analyze_emr_type(
             raise HTTPException(status_code=400, detail="File URL is not a valid S3 URL")
 
         s3_key = urllib.parse.unquote(file_url[len(prefix):])
-        print(f"=== DEBUG: Loading file from S3: {s3_key} ===")
+        debug("=== DEBUG: Loading file from S3: {} ===")
         s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
         file_content = s3_response['Body'].read()
 
@@ -622,17 +623,17 @@ async def analyze_emr_type(
         #     # Check srcdoc attribute first
         #     srcdoc = iframe.get('srcdoc')
         #     if srcdoc:
-        #         print(f"=== DEBUG: Found iframe with srcdoc content ===")
+        #         debug("=== DEBUG: Found iframe with srcdoc content ===")
         #         raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
         #     else:
         #         # Check src attribute
         #         src = iframe.get('src')
         #         if src:
-        #             print(f"=== DEBUG: Found iframe with src: {src} ===")
+        #             debug("=== DEBUG: Found iframe with src: {} ===")
         #         # Check inner content
         #         iframe_content = iframe.get_text(strip=True)
         #         if iframe_content:
-        #             print(f"=== DEBUG: Found iframe with inner content ===")
+        #             debug("=== DEBUG: Found iframe with inner content ===")
         #             raw_html += "\n<!-- IFRAME CONTENT -->\n" + iframe_content
 
         # Get all custom instructions from emr_type_results table
@@ -643,7 +644,7 @@ async def analyze_emr_type(
         # 1. First append: Fields without instructions from results table
         fields_without_instructions = [result.key for result in results if result.status != "confirmed" and not (result.instructions and result.instructions.strip())]
         if fields_without_instructions:
-            print(f"=== DEBUG: Found {len(fields_without_instructions)} fields without instructions: {fields_without_instructions} ===")
+            debug("=== DEBUG: Found {} fields without instructions: {} ===")
             field_instructions = "\n".join([f"- {field_name}" for field_name in fields_without_instructions])
             custom_instructions.append(f"Fields to extract:\n{field_instructions}")
 
@@ -665,20 +666,20 @@ async def analyze_emr_type(
                          [normalize_for_comparison(name) for name in existing_field_names]]
 
         if missing_fields:
-            print(f"=== DEBUG: Found {len(missing_fields)} missing fields: {missing_fields} ===")
+            debug("=== DEBUG: Found {} missing fields: {} ===")
             field_instructions = "\n".join([f"- {field_name}" for field_name in missing_fields])
             custom_instructions.append(f"Additional fields to extract:\n{field_instructions}")
 
         # 4. Fourth append: Manual fields from manual_fields table for this EMR type
         # manual_fields = get_manual_fields_by_emr_type(db, emr_type_id)
         # if manual_fields:
-        #     print(f"=== DEBUG: Found {len(manual_fields)} manual fields: {[field.name for field in manual_fields]} ===")
+        #     debug("=== DEBUG: Found {} manual fields: {} ===")
         #     manual_field_instructions = "\n".join([f"- {field.name}" for field in manual_fields])
         #     custom_instructions.append(f"Additional fields to extract:\n{manual_field_instructions}")
 
         # Combine all instructions into one big instruction
         combined_instructions = "\n".join(custom_instructions)
-        print(f"=== DEBUG: Combined instructions: {combined_instructions} ===")
+        debug("=== DEBUG: Combined instructions: {} ===")
 
         # Create prompt template
         prompt_template = """Below is the HTML content of a psychotherapy EMR form. Please analyze the form and extract the following fields: {field_instructions}
@@ -714,14 +715,14 @@ HTML CONTENT: {html_content_for_gpt}"""
         previous_status = current_emr.status if current_emr.status != "processing" else current_emr.previous_status
         
         # Set initial processing status with total chunks
-        print(f"=== DEBUG: About to update status to 'processing' for emr_type_id={emr_type_id} ===")
+        debug("=== DEBUG: About to update status to 'processing' for emr_type_id={} ===")
         update_emr_type(db, emr_type_id, status="processing", previous_status=previous_status, total_chunks=len(chunks), processed_chunks=0)
-        print(f"=== DEBUG: Status update to 'processing' completed ===")
-        print(f"=== DEBUG: Started processing {len(chunks)} chunks ===")
+        debug("=== DEBUG: Status update to 'processing' completed ===")
+        debug("=== DEBUG: Started processing {} chunks ===")
 
         if len(chunks) == 1:
             # Single chunk - process normally
-            print("=== DEBUG: Processing single chunk ===")
+            debug("=== DEBUG: Processing single chunk ===")
             prompt = prompt_template.format(
                 field_instructions=combined_instructions,
                 html_content_for_gpt=chunks[0]
@@ -737,7 +738,7 @@ HTML CONTENT: {html_content_for_gpt}"""
                     max_tokens=4000
                 )
                 result = response.choices[0].message.content
-                print(f"=== DEBUG: AI Response: {result} ===")
+                debug("=== DEBUG: AI Response: {} ===")
 
                 # Return single chunk response
                 return {
@@ -747,12 +748,12 @@ HTML CONTENT: {html_content_for_gpt}"""
                 }
 
             except Exception as e:
-                print(f"=== DEBUG: Error processing single chunk: {str(e)} ===")
+                debug("=== DEBUG: Error processing single chunk: {} ===")
                 raise HTTPException(status_code=500, detail=f"Error processing EMR content: {str(e)}")
         
         else:
             # Multiple chunks - process asynchronously with progress tracking
-            print(f"=== DEBUG: Processing {len(chunks)} chunks asynchronously ===")
+            debug("=== DEBUG: Processing {} chunks asynchronously ===")
             chunk_responses = await process_chunks_async(chunks, prompt_template, emr_type_id, db, field_instructions=combined_instructions)            
             # Format chunks for frontend
             formatted_chunks = []
@@ -764,7 +765,7 @@ HTML CONTENT: {html_content_for_gpt}"""
                 })
             
             # Keep status as "processing" - wait for user confirmation
-            print(f"=== DEBUG: Analysis completed successfully ===")
+            debug("=== DEBUG: Analysis completed successfully ===")
             
             return {
                 "message": "Analysis completed successfully",
@@ -773,7 +774,7 @@ HTML CONTENT: {html_content_for_gpt}"""
             }
 
     except Exception as e:
-        print(f"=== DEBUG: Error in analyze_emr_type: {str(e)} ===")
+        debug("=== DEBUG: Error in analyze_emr_type: {} ===")
         raise HTTPException(status_code=500, detail=f"Error analyzing EMR: {str(e)}")
 
 
@@ -788,7 +789,7 @@ async def save_selected_chunk(
     emr_type_id = req.emr_type_id
     selected_chunks = req.selected_chunks
 
-    print(f"=== DEBUG: Saving {len(selected_chunks)} selected chunks for EMR type {emr_type_id} ===")
+    debug("=== DEBUG: Saving {} selected chunks for EMR type {} ===")
 
     # Track unique values for each field
     field_values = {}
@@ -799,7 +800,7 @@ async def save_selected_chunk(
         chunk_index = chunk_data.selected_chunk_index
         selected_chunk_label = chunk_data.selected_chunk_label or ''
 
-        print(f"=== DEBUG: Processing chunk {chunk_index} with label: {selected_chunk_label} ===")
+        debug("=== DEBUG: Processing chunk {} with label: {} ===")
 
         # Parse the selected chunk response
         lines = selected_chunk_response.strip().split('\n')
@@ -854,7 +855,7 @@ async def save_selected_chunk(
                 if extracted_label:
                     field_values[key]['label'] = extracted_label
 
-        print(f"=== DEBUG: Parsed results from chunk {chunk_index}: {dict(field_values)} ===")
+        debug("=== DEBUG: Parsed results from chunk {}: {} ===")
 
     # Convert sets to lists and save each unique value as separate row
     for field, field_data in field_values.items():
@@ -890,7 +891,7 @@ async def save_selected_chunk(
                 instruction_row.value = best_value
                 instruction_row.label = best_label
                 db.commit()
-                print(f"=== DEBUG: Updated instruction row for {field}: {best_value} (label: {best_label}) ===")
+                debug("=== DEBUG: Updated instruction row for {}: {} (label: {}) ===")
                 # Skip creating new rows for this key since we updated the instruction row
                 continue  # Skip to next field, don't process other values for this key
 
@@ -899,7 +900,7 @@ async def save_selected_chunk(
             # Save this field-value-label pair to DB
             save_results_to_db_with_label({field: value}, emr_type_id, db, label)
 
-    print(f"=== DEBUG: Saved {len(field_values)} fields with multiple values ===")
+    debug("=== DEBUG: Saved {} fields with multiple values ===")
 
     # Use static JSON instructions format
     json_instructions = {
@@ -916,11 +917,11 @@ async def save_selected_chunk(
     import json
     json_instructions_string = json.dumps(json_instructions)
     update_emr_type(db, emr_type_id, instructions=json_instructions_string)
-    print(f"=== DEBUG: Saved generated JSON instructions to EMR type ===")
+    debug("=== DEBUG: Saved generated JSON instructions to EMR type ===")
 
     # Update status to 'analyzed' after successful analysis
     update_emr_type(db, emr_type_id, status='analyzed')
-    print(f"=== DEBUG: Updated EMR type status to 'analyzed' ===")
+    debug("=== DEBUG: Updated EMR type status to 'analyzed' ===")
 
     return {
         "message": f"Selected chunks saved successfully",
@@ -945,7 +946,7 @@ async def get_analyze_progress(
         total_chunks = getattr(emr_type, 'total_chunks', 0)
         processed_chunks = getattr(emr_type, 'processed_chunks', 0)
         
-        print(f"=== DEBUG: Progress endpoint - total_chunks={total_chunks}, processed_chunks={processed_chunks} ===")
+        debug("=== DEBUG: Progress endpoint - total_chunks={}, processed_chunks={} ===")
         
         # Calculate progress based on actual chunks processed
         if total_chunks > 0:
@@ -953,7 +954,7 @@ async def get_analyze_progress(
         else:
             progress = 0
         
-        print(f"=== DEBUG: Progress endpoint - calculated progress={progress}% ===")
+        debug("=== DEBUG: Progress endpoint - calculated progress={}% ===")
         
         # Check if analysis is complete
         if progress >= 100:
@@ -973,7 +974,7 @@ async def get_analyze_progress(
     
 
     except Exception as e:
-        print(f"=== DEBUG: Error getting progress: {str(e)} ===")
+        debug("=== DEBUG: Error getting progress: {} ===")
         raise HTTPException(status_code=500, detail=f"Error getting progress: {str(e)}")
 
 # Delete a specific result row from the database emr_type_results table
@@ -988,7 +989,7 @@ async def delete_result(
     key = req.key
     value = req.value
 
-    print(f"=== DEBUG: Deleting result for EMR type {emr_type_id}, key: {key}, value: {value} ===")
+    debug("=== DEBUG: Deleting result for EMR type {}, key: {}, value: {} ===")
 
     try:
         # Find and delete the specific result
@@ -1001,7 +1002,7 @@ async def delete_result(
         if result:
             db.delete(result)
             db.commit()
-            print(f"=== DEBUG: Successfully deleted result for key: {key}, value: {value} ===")
+            debug("=== DEBUG: Successfully deleted result for key: {}, value: {} ===")
             return {
                 "message": f"Result for key '{key}' with value '{value}' deleted successfully",
                 "deleted_key": key,
@@ -1012,5 +1013,5 @@ async def delete_result(
 
     except Exception as e:
         db.rollback()
-        print(f"=== DEBUG: Error deleting result: {str(e)} ===")
+        debug("=== DEBUG: Error deleting result: {} ===")
         raise HTTPException(status_code=500, detail=f"Error deleting result: {str(e)}")

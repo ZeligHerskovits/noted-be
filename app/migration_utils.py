@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 import logging
+from .debug import debug
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +62,10 @@ class AutoMigrationManager:
             # Safety check: prevent self-loops
             current_head = self._get_current_head()
             if current_head == 'HEAD_PLACEHOLDER' or not current_head:
-                print("⚠️  Invalid current head, using base migration")
+                debug("⚠️  Invalid current head, using base migration")
                 current_head = "3c7694b9a164"
             
-            print(f"🔍 Creating migration from current head: {current_head}")
+            debug("🔍 Creating migration from current head: {}", current_head)
             
             # Generate migration file for column rename
             migration_file = self._generate_rename_migration_file(old_column_name, new_column_name, table_name)
@@ -141,7 +142,7 @@ class AutoMigrationManager:
                 result = conn.execute(text("SELECT version_num FROM alembic_version"))
                 row = result.fetchone()
                 if row and row[0] and row[0] != 'HEAD_PLACEHOLDER':
-                    print(f"🔍 Database current revision: {row[0]}")
+                    debug("🔍 Database current revision: {}", row[0])
                     return row[0]
             
             # Method 2: Parse migration files to find the latest valid revision
@@ -171,7 +172,7 @@ class AutoMigrationManager:
                                     timestamp = parts[-1].replace('.py', '')
                                     valid_migrations.append((timestamp, revision, down_revision))
                     except Exception as e:
-                        print(f"⚠️  Skipping file {filename}: {e}")
+                        debug("⚠️  Skipping file {}: {}", filename, e)
                         continue
             
             # Find the latest migration (the one that's not referenced as down_revision by any other)
@@ -184,21 +185,21 @@ class AutoMigrationManager:
                 # Find the revision that's not a down_revision (the head)
                 for timestamp, revision, down_revision in valid_migrations:
                     if revision not in all_down_revisions:
-                        print(f"🔍 Found head revision: {revision}")
+                        debug("🔍 Found head revision: {}", revision)
                         return revision
                 
                 # Fallback: return the most recent revision
                 latest_revision = valid_migrations[0][1]
-                print(f"🔍 Using latest revision as fallback: {latest_revision}")
+                debug("🔍 Using latest revision as fallback: {}", latest_revision)
                 return latest_revision
             
             # Method 3: Final fallback to base migration
-            print("🔍 Using base migration as final fallback")
+            debug("🔍 Using base migration as final fallback")
             return "3c7694b9a164"
             
         except Exception as e:
-            print(f"❌ Error in _get_current_head: {str(e)}")
-            print("🔍 Using base migration as error fallback")
+            debug("❌ Error in _get_current_head: {}", str(e))
+            debug("🔍 Using base migration as error fallback")
             return "3c7694b9a164"
     
     def _create_migration_content(self, field_name: str, field_type: str, down_revision: str) -> str:
@@ -359,20 +360,20 @@ def downgrade() -> None:
             # Check which one actually exists
             for name in possible_names:
                 if self.check_field_exists(db, name):
-                    print(f"🔍 Found actual column: '{name}' for field '{old_field_name}'")
+                    debug("🔍 Found actual column: '{}' for field '{}'", name, old_field_name)
                     return name
             
             # If none found, try to get all columns and find the closest match
-            print(f"⚠️  No exact match found for '{old_field_name}', searching for similar columns...")
+            debug("⚠️  No exact match found for '{}', searching for similar columns...", old_field_name)
             all_columns = self.get_all_session_columns(db)
             for col in all_columns:
                 if old_field_name.lower() in col.lower() or col.lower() in old_field_name.lower():
-                    print(f"🔍 Found similar column: '{col}' for field '{old_field_name}'")
+                    debug("🔍 Found similar column: '{}' for field '{}'", col, old_field_name)
                     return col
             
             # Last resort: return the sanitized version
             fallback = self.sanitize_field_name(old_field_name)
-            print(f"⚠️  Using fallback column name: '{fallback}' for field '{old_field_name}'")
+            debug("⚠️  Using fallback column name: '{}' for field '{}'", fallback, old_field_name)
             return fallback
             
         except Exception as e:
