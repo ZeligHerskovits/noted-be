@@ -469,8 +469,12 @@ HTML CONTENT: {html_content_for_gpt}"""
     # Create chunks from the full HTML content
     chunks = create_chunks(raw_html)
 
+    # Store current status as previous_status before setting to processing
+    current_emr = get_emr_type(db, emr_type_id)
+    previous_status = current_emr.status if current_emr.status != "processing" else current_emr.previous_status
+    
     # Set initial processing status
-    update_emr_type(db, emr_type_id, status="processing", total_chunks=len(chunks), processed_chunks=0)
+    update_emr_type(db, emr_type_id, status="processing", previous_status=previous_status, total_chunks=len(chunks), processed_chunks=0)
     print(f"=== DEBUG: Started processing {len(chunks)} chunks for AI analysis ===")
 
     if len(chunks) == 1:
@@ -565,6 +569,8 @@ async def analyze_emr_type(
     # If total_chunks != processed_chunks, someone is analyzing
     total_chunks = emr_type.total_chunks or 0
     processed_chunks = emr_type.processed_chunks or 0
+    
+    print(f"=== DEBUG: Analyze API - Status: {emr_type.status}, Total chunks: {total_chunks}, Processed chunks: {processed_chunks}, Equal: {total_chunks == processed_chunks} ===")
     
     if total_chunks != processed_chunks:
         # Analysis is in progress - block anyone from starting new analysis
@@ -664,11 +670,11 @@ async def analyze_emr_type(
             custom_instructions.append(f"Additional fields to extract:\n{field_instructions}")
 
         # 4. Fourth append: Manual fields from manual_fields table for this EMR type
-        manual_fields = get_manual_fields_by_emr_type(db, emr_type_id)
-        if manual_fields:
-            print(f"=== DEBUG: Found {len(manual_fields)} manual fields: {[field.name for field in manual_fields]} ===")
-            manual_field_instructions = "\n".join([f"- {field.name}" for field in manual_fields])
-            custom_instructions.append(f"Additional fields to extract:\n{manual_field_instructions}")
+        # manual_fields = get_manual_fields_by_emr_type(db, emr_type_id)
+        # if manual_fields:
+        #     print(f"=== DEBUG: Found {len(manual_fields)} manual fields: {[field.name for field in manual_fields]} ===")
+        #     manual_field_instructions = "\n".join([f"- {field.name}" for field in manual_fields])
+        #     custom_instructions.append(f"Additional fields to extract:\n{manual_field_instructions}")
 
         # Combine all instructions into one big instruction
         combined_instructions = "\n".join(custom_instructions)
@@ -694,9 +700,13 @@ HTML CONTENT: {html_content_for_gpt}"""
         # Create chunks from the full HTML content
         chunks = create_chunks(raw_html)
 
+        # Store current status as previous_status before setting to processing
+        current_emr = get_emr_type(db, emr_type_id)
+        previous_status = current_emr.status if current_emr.status != "processing" else current_emr.previous_status
+        
         # Set initial processing status with total chunks
         print(f"=== DEBUG: About to update status to 'processing' for emr_type_id={emr_type_id} ===")
-        update_emr_type(db, emr_type_id, status="processing", total_chunks=len(chunks), processed_chunks=0)
+        update_emr_type(db, emr_type_id, status="processing", previous_status=previous_status, total_chunks=len(chunks), processed_chunks=0)
         print(f"=== DEBUG: Status update to 'processing' completed ===")
         print(f"=== DEBUG: Started processing {len(chunks)} chunks ===")
 

@@ -48,6 +48,7 @@ class UserResponse(BaseModel):
     company: Optional[Any] = None
     user_type: Optional[str] = None
     session_instructions: Optional[str] = None
+    created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 
@@ -170,12 +171,14 @@ class EMRTypeFieldCreate(BaseModel):
     type: str
     analyzable: Optional[str] = None
     api_name: Optional[str] = None
+    dropdown_values: Optional[str] = None
 
 class EMRTypeFieldUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     analyzable: Optional[str] = None
     api_name: Optional[str] = None
+    dropdown_values: Optional[str] = None
 
 class EMRTypeFieldResponse(BaseModel):
     id: UUID
@@ -183,6 +186,7 @@ class EMRTypeFieldResponse(BaseModel):
     type: str
     analyzable: Optional[str] = None
     api_name: Optional[str] = None
+    dropdown_values: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -204,6 +208,8 @@ class EMRTypeResultResponse(BaseModel):
     instructions: Optional[str] = None
     status: Optional[str] = None
     label: Optional[str] = None
+    type: Optional[str] = None
+    dropdown_values: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -286,6 +292,8 @@ class SessionResponse(BaseModel):
         from_attributes = True
         # Allow extra fields for dynamic columns
         extra = "allow"
+    
+
 
 # Manual Field Schemas
 class ManualFieldCreate(BaseModel):

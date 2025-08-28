@@ -20,6 +20,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     user_type = Column(String(100), nullable=True)
     session_instructions = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 class Otp(Base):
     __tablename__ = "otps"
@@ -40,7 +41,7 @@ class Company(Base):
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
     emr = Column(String(50), nullable=True)
-    created_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
     is_active = Column(Boolean, default=True, nullable=False)
 
 class Client(Base):
@@ -70,6 +71,7 @@ class EmrType(Base):
     instructions = Column(String, nullable=True)
     response = Column(String, nullable=True)
     status = Column(String(100), nullable=True)
+    previous_status = Column(String(100), nullable=True)  # Track previous status before processing
     total_chunks = Column(Integer, nullable=True)
     processed_chunks = Column(Integer, nullable=True)
 
@@ -81,6 +83,7 @@ class EMRTypeField(Base):
     type = Column(String(100), nullable=False)
     analyzable = Column(Text, nullable=True)
     api_name = Column(Text, nullable=True)
+    dropdown_values = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -121,5 +124,6 @@ class ManualField(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(Text, nullable=False)
     emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
+    type = Column(Text, nullable=True)
     created = Column(DateTime, server_default=func.now())
     updated = Column(DateTime, server_default=func.now(), onupdate=func.now()) 

@@ -261,8 +261,8 @@ def back_action_emr_type(
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
     """
-    Check if there are any key-value results for this EMR type and update status accordingly.
-    If there are results, set status to 'analyzed', otherwise set to 'draft'.
+    Restore the previous status when going back from processing.
+    If no previous status is stored, determine based on results.
     """
     # Get the EMR type
     emr_type = get_emr_type(db, emr_type_id)
@@ -272,10 +272,15 @@ def back_action_emr_type(
     # Check if there are any results for this EMR type
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
     
-    # Determine new status based on whether results exist
-    if results:
+    # Determine new status based on previous_status or results
+    if emr_type.previous_status:
+        # Restore the previous status
+        new_status = emr_type.previous_status
+    elif results:
+        # If no previous status but results exist, set to analyzed
         new_status = "analyzed"
     else:
+        # If no previous status and no results, set to draft
         new_status = "draft"
     
     # Get the current total_chunks value to reset processed_chunks
@@ -289,8 +294,21 @@ def back_action_emr_type(
         processed_chunks=total_chunks
     )
     
+    # Force refresh from database to ensure changes are committed
+    db.commit()
+    
+    # Verify the update worked by fetching fresh data
+    updated_emr = get_emr_type(db, emr_type_id)
+    print(f"=== DEBUG: Back action - Status: {updated_emr.status}, Total chunks: {updated_emr.total_chunks}, Processed chunks: {updated_emr.processed_chunks} ===")
+    
     return {
-        "message": f"EMR type status updated to '{new_status}' and processed_chunks reset to {total_chunks}"
+        "message": f"EMR type status restored to '{new_status}' and processed_chunks reset to {total_chunks}",
+        "debug_info": {
+            "status": updated_emr.status,
+            "total_chunks": updated_emr.total_chunks,
+            "processed_chunks": updated_emr.processed_chunks,
+            "chunks_equal": updated_emr.total_chunks == updated_emr.processed_chunks
+        }
     }
 
 # Update a EMR type
@@ -590,7 +608,7 @@ def create_field(
 ):
     """Create a new EMR type field"""
     try:
-        db_field = create_emr_type_field(db, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name)
+        db_field = create_emr_type_field(db, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name, dropdown_values=field.dropdown_values)
         return db_field
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -624,7 +642,7 @@ def update_field(
 ):
     """Update EMR type field"""
     try:
-        db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name)
+        db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name, dropdown_values=field.dropdown_values)
         if not db_field:
             raise HTTPException(status_code=404, detail="Field not found")
         return db_field
@@ -653,6 +671,14 @@ def create_manual_field_endpoint(
     """Create a new manual field"""
     db_field = create_manual_field(db, name=field.name, emr_type_id=field.emr_type_id)
     return db_field
+
+@manual_fields_router.get("/", response_model=List[ManualFieldResponse])
+def get_all_manual_fields_endpoint(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+):
+    """Get all manual fields from all EMR types"""
+    return get_all_manual_fields(db)
 
 @manual_fields_router.get("/emr-type/{emr_type_id}", response_model=List[ManualFieldResponse])
 def get_manual_fields_by_emr_type_endpoint(
@@ -726,6 +752,29 @@ def get_all_emr_type_results_endpoint(
             result_obj["type"] = field_type
         else:
             result_obj["type"] = "text"  # Default type
+        
+        # If type is dropdown, also add dropdown_values
+        if field_type and field_type.lower() == "dropdown":
+            # Find the corresponding EMR type field to get dropdown_values
+            # Try multiple matching strategies for better field identification
+            emr_field = None
+            
+            # Strategy 1: Case-insensitive name match
+            emr_field = next((field for field in emr_fields if field.name.lower() == result.key.lower()), None)
+            
+            # Strategy 2: Sanitized name match (remove spaces, special chars)
+            if not emr_field:
+                sanitized_key = result.key.lower().replace(' ', '').replace('-', '').replace('_', '')
+                emr_field = next((field for field in emr_fields 
+                                if field.name.lower().replace(' ', '').replace('-', '').replace('_', '') == sanitized_key), None)
+            
+            # Strategy 3: Partial name match
+            if not emr_field:
+                emr_field = next((field for field in emr_fields 
+                                if result.key.lower() in field.name.lower() or field.name.lower() in result.key.lower()), None)
+            
+            if emr_field and emr_field.dropdown_values:
+                result_obj["dropdown_values"] = emr_field.dropdown_values
         
         enhanced_results.append(result_obj)
     

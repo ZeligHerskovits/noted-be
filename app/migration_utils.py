@@ -218,7 +218,8 @@ class AutoMigrationManager:
             'FLOAT': 'Float',
             'DECIMAL': 'Numeric',
             'JSON': 'JSON',
-            'JSONB': 'JSONB'
+            'JSONB': 'JSONB',
+            'DROPDOWN': 'Text'  # Dropdown fields use TEXT data type in sessions table
         }
         
         # Get the proper SQLAlchemy type with correct casing

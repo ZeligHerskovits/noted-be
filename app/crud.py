@@ -149,6 +149,7 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
                    files: Optional[List[dict]] = None, instructions: Optional[str] = None,
                    response: Optional[str] = None, status: Optional[str] = None,
+                   previous_status: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None):
     print(f"=== DEBUG: update_emr_type called with emr_type_id={emr_type_id}, processed_chunks={processed_chunks}, total_chunks={total_chunks} ===")
     emr_type = get_emr_type(db, emr_type_id)
@@ -170,6 +171,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.response = response
     if status is not None:
         emr_type.status = status
+    if previous_status is not None:
+        emr_type.previous_status = previous_status
     if total_chunks is not None:
         emr_type.total_chunks = total_chunks
         print(f"=== DEBUG: Updated total_chunks to {total_chunks} ===")
@@ -194,15 +197,24 @@ def delete_emr_type(db: Session, emr_type_id: UUID):
     return True
 
 # EMR Type Field CRUD operations
-def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optional[str] = None, api_name: Optional[str] = None):
+def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optional[str] = None, api_name: Optional[str] = None, dropdown_values: Optional[str] = None):
     # If api_name is not provided, auto-generate it from the field name
     if api_name is None:
         from .migration_utils import migration_manager
         api_name = migration_manager.sanitize_field_name(name)
     
+    # Check if EMR type field already exists (by name and emr_type_id)
+    from .models import EMRTypeField
+    existing_field = db.query(EMRTypeField).filter(
+        EMRTypeField.name == name
+    ).first()
+    
+    if existing_field:
+        raise Exception(f"EMR type field with name '{name}' already exists")
+    
     try:
         # Step 1: Create EMR field (don't commit yet)
-        field = EMRTypeField(name=name, type=type, analyzable=analyzable, api_name=api_name)
+        field = EMRTypeField(name=name, type=type, analyzable=analyzable, api_name=api_name, dropdown_values=dropdown_values)
         db.add(field)
         db.flush()  # Don't commit yet
         
@@ -273,7 +285,7 @@ def get_emr_type_field(db: Session, field_id: UUID):
 def get_all_emr_type_fields(db: Session):
     return db.query(EMRTypeField).all()
 
-def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None, analyzable: Optional[str] = None, api_name: Optional[str] = None):
+def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None, analyzable: Optional[str] = None, api_name: Optional[str] = None, dropdown_values: Optional[str] = None):
     field = get_emr_type_field(db, field_id)
     if not field:
         return None
@@ -296,6 +308,8 @@ def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = Non
             field.analyzable = analyzable
         if api_name is not None:
             field.api_name = api_name
+        if dropdown_values is not None:
+            field.dropdown_values = dropdown_values
         
         db.flush()  # Don't commit yet
 
@@ -751,7 +765,16 @@ def delete_session(db: Session, session_id: UUID):
 # Manual Field CRUD operations
 def create_manual_field(db: Session, name: str, emr_type_id: UUID):
     """Create a new manual field"""
-    manual_field = ManualField(name=name, emr_type_id=emr_type_id)
+    # Look up the corresponding EMR type field to get the type
+    from .models import EMRTypeField
+    emr_field = db.query(EMRTypeField).filter(
+        EMRTypeField.name == name
+    ).first()
+    
+    # Get the type from the EMR type field, or default to "text"
+    field_type = emr_field.type if emr_field else "text"
+    
+    manual_field = ManualField(name=name, emr_type_id=emr_type_id, type=field_type)
     db.add(manual_field)
     db.commit()
     db.refresh(manual_field)
@@ -777,6 +800,14 @@ def update_manual_field(db: Session, field_id: UUID, name: Optional[str] = None)
 
     if name is not None:
         manual_field.name = name
+        # If name changed, also update the type by looking up the new field
+        from .models import EMRTypeField
+        emr_field = db.query(EMRTypeField).filter(
+            EMRTypeField.name == name
+        ).first()
+        
+        if emr_field:
+            manual_field.type = emr_field.type
 
     db.commit()
     db.refresh(manual_field)
