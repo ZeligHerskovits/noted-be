@@ -6,6 +6,7 @@ import datetime
 from sqlalchemy import and_
 import random
 import secrets
+import boto3
 import os
 import subprocess
 from uuid import UUID
@@ -122,18 +123,123 @@ def verify_email_token(db: Session, token: str):
         db.refresh(user)
     return user
 
+# Add this global S3 client (same pattern as emr_types.py)
+s3 = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
+    verify=False  # Add this to match your existing pattern
+)
+
+def get_default_session_instructions_from_s3():
+    """Fetch default session instructions from S3"""
+    try:
+        bucket_name = os.getenv("S3_BUCKET_NAME")
+        if not bucket_name:
+            raise ValueError("S3_BUCKET_NAME environment variable is not set")
+            
+        s3_key = "default-session-instructions.txt"
+        
+        response = s3.get_object(Bucket=bucket_name, Key=s3_key)
+        default_instructions = response['Body'].read().decode('utf-8')
+        
+        return default_instructions
+        
+    except Exception as e:
+        # Fallback to a basic template if S3 fails
+        fallback_instructions = """I'm a therapist providing sessions for my client, below are the rules on how to write a session note:
+
+for each session, I need 3 notes as follows
+Section 1: Field "Methods"
+Section 2: Field "Progress_towards_goal"
+Section 3: Field "Recommended_changes"
+
+Please provide comprehensive analysis based on the session data."""
+        
+        print(f"Warning: Could not fetch from S3: {e}. Using fallback instructions.")
+        return fallback_instructions
+
+import html
+import re
+
+def parse_s3_instructions_into_sections(instructions_text: str):
+    """Put EVERYTHING up to the SECOND 'Section 2:' into methods_instructions."""
+    try:
+        s = html.unescape(instructions_text)
+        # Clean up whitespace: remove \n, \r, extra spaces, tabs
+        s = re.sub(r'\s+', ' ', s).strip()
+
+        sections = {
+            'methods_instructions': '',
+            'progress_towards_goal_instructions': '',
+            'recommended_changes_instructions': ''
+        }
+
+        # Find all 'Section 2:' markers
+        s2_positions = [m.start() for m in re.finditer(r'Section 2:', s)]
+        debug(f"Found Section 2 positions: {s2_positions}")
+        
+        # Index where methods should stop: the SECOND 'Section 2:' if present
+        if len(s2_positions) >= 2:
+            cut2 = s2_positions[1]  # second occurrence
+        elif len(s2_positions) == 1:
+            cut2 = s2_positions[0]  # only one; best effort
+        else:
+            cut2 = -1               # none; whole thing is Section 1
+        
+        debug(f"cut2 = {cut2}")
+        debug(f"Length of s: {len(s)}")
+        debug(f"Length of s[:cut2]: {len(s[:cut2]) if cut2 != -1 else len(s)}")
+
+        # Find 'Section 3:' AFTER the cut (if any)
+        s3_idx = s.find('Section 3:', cut2 if cut2 != -1 else 0)
+
+        # 1) methods: start -> SECOND 'Section 2:'
+        sections['methods_instructions'] = s[:cut2].strip() if cut2 != -1 else s.strip()
+        debug(f"Length of methods_instructions: {len(sections['methods_instructions'])}")
+
+        # 2) progress: SECOND 'Section 2:' -> 'Section 3:' (or to end if no Section 3)
+        if cut2 != -1:
+            if s3_idx != -1 and s3_idx > cut2:
+                sections['progress_towards_goal_instructions'] = s[cut2:s3_idx].strip()
+            else:
+                sections['progress_towards_goal_instructions'] = s[cut2:].strip()
+
+        # 3) recommended: 'Section 3:' -> end
+        if s3_idx != -1:
+            sections['recommended_changes_instructions'] = s[s3_idx:].strip()
+
+        return sections
+
+    except Exception as e:
+        print(f"Error parsing S3 instructions: {e}")
+        return {
+            'methods_instructions': '',
+            'progress_towards_goal_instructions': '',
+            'recommended_changes_instructions': ''
+        }
 # EMR Type CRUD operations
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
                    documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None,
                    instructions: Optional[str] = None, response: Optional[str] = None):
+    default_session_instructions = get_default_session_instructions_from_s3()
+    
+    # Parse the S3 instructions into the three sections
+    parsed_sections = parse_s3_instructions_into_sections(default_session_instructions)
+    
     emr_type = EmrType(
         name=name,
         session_type=session_type,
         documentation_methods=documentation_methods,
         files=files,
         instructions=instructions,
+        session_instructions=default_session_instructions,  # Use S3 instructions
         response=response,
-        status='draft'  # Set default status to draft
+        status='draft',  # Set default status to draft
+        methods_instructions=parsed_sections['methods_instructions'],
+        progress_towards_goal_instructions=parsed_sections['progress_towards_goal_instructions'],
+        recommended_changes_instructions=parsed_sections['recommended_changes_instructions']
     )
     db.add(emr_type)
     db.commit()
@@ -149,9 +255,11 @@ def get_all_emr_types(db: Session):
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
                    files: Optional[List[dict]] = None, instructions: Optional[str] = None,
-                   response: Optional[str] = None, status: Optional[str] = None,
+                   response: Optional[str] = None, session_instructions: Optional[str] = None, status: Optional[str] = None,
                    previous_status: Optional[str] = None,
-                   total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None):
+                   total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None,
+                   methods_instructions: Optional[str] = None, progress_towards_goal_instructions: Optional[str] = None,
+                   recommended_changes_instructions: Optional[str] = None):
     debug("=== DEBUG: update_emr_type called with emr_type_id={}, processed_chunks={}, total_chunks={} ===", emr_type_id, processed_chunks, total_chunks)
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
@@ -168,6 +276,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.files = files
     if instructions is not None:
         emr_type.instructions = instructions
+    if session_instructions is not None:
+        emr_type.session_instructions = session_instructions
     if response is not None:
         emr_type.response = response
     if status is not None:
@@ -180,6 +290,12 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
     if processed_chunks is not None:
         emr_type.processed_chunks = processed_chunks
         debug("=== DEBUG: Updated processed_chunks to {} ===", processed_chunks)
+    if methods_instructions is not None:
+        emr_type.methods_instructions = methods_instructions
+    if progress_towards_goal_instructions is not None:
+        emr_type.progress_towards_goal_instructions = progress_towards_goal_instructions
+    if recommended_changes_instructions is not None:
+        emr_type.recommended_changes_instructions = recommended_changes_instructions
 
     debug("=== DEBUG: About to commit database changes ===")
     db.commit()
@@ -198,7 +314,7 @@ def delete_emr_type(db: Session, emr_type_id: UUID):
     return True
 
 # EMR Type Field CRUD operations
-def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optional[str] = None, api_name: Optional[str] = None, dropdown_values: Optional[str] = None):
+def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optional[str] = None, api_name: Optional[str] = None, dropdown_values: Optional[str] = None, instructions: Optional[str] = None):
     # If api_name is not provided, auto-generate it from the field name
     if api_name is None:
         from .migration_utils import migration_manager
@@ -215,7 +331,7 @@ def create_emr_type_field(db: Session, name: str, type: str, analyzable: Optiona
     
     try:
         # Step 1: Create EMR field (don't commit yet)
-        field = EMRTypeField(name=name, type=type, analyzable=analyzable, api_name=api_name, dropdown_values=dropdown_values)
+        field = EMRTypeField(name=name, type=type, analyzable=analyzable, api_name=api_name, dropdown_values=dropdown_values, instructions=instructions)
         db.add(field)
         db.flush()  # Don't commit yet
         
@@ -286,7 +402,7 @@ def get_emr_type_field(db: Session, field_id: UUID):
 def get_all_emr_type_fields(db: Session):
     return db.query(EMRTypeField).all()
 
-def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None, analyzable: Optional[str] = None, api_name: Optional[str] = None, dropdown_values: Optional[str] = None):
+def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = None, type: Optional[str] = None, analyzable: Optional[str] = None, api_name: Optional[str] = None, dropdown_values: Optional[str] = None, instructions: Optional[str] = None):
     field = get_emr_type_field(db, field_id)
     if not field:
         return None
@@ -311,6 +427,8 @@ def update_emr_type_field(db: Session, field_id: UUID, name: Optional[str] = Non
             field.api_name = api_name
         if dropdown_values is not None:
             field.dropdown_values = dropdown_values
+        if instructions is not None:
+            field.instructions = instructions
         
         db.flush()  # Don't commit yet
 
@@ -597,22 +715,11 @@ def create_session(db: Session, user_id: UUID, **session_data):
 
 def get_session(db: Session, session_id: UUID):
     """Get session by ID"""
-    from sqlalchemy import text
+    from .models import Session as SessionModel
     
-    query = text("SELECT * FROM sessions WHERE id = :session_id")
-    result = db.execute(query, {"session_id": session_id})
-    session_data = result.fetchone()
-    
-    if not session_data:
-        return None
-    
-    # Create a simple object with all the data
-    class SessionResult:
-        def __init__(self, **kwargs):
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-    
-    return SessionResult(**dict(session_data._mapping))
+    # Use SQLAlchemy ORM instead of raw SQL
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    return session
 
 def get_sessions_by_user(db: Session, user_id: UUID):
     """Get all sessions for a specific user"""

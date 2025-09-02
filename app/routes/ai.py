@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 from ..models import EMRTypeResult
 from ..schemas import SaveSelectedChunkRequest
 from ..debug import debug
+from typing import Optional
 load_dotenv()
 
 
@@ -46,6 +47,13 @@ class GenerateRequest(BaseModel):
 class SaveResponseRequest(BaseModel):
     emr_type_id: str
     response: str
+
+class SaveSessionInstructionsRequest(BaseModel):
+    emr_type_id: str
+    session_instructions: str
+    methods_instructions: Optional[str] = None
+    progress_towards_goal_instructions: Optional[str] = None
+    recommended_changes_instructions: Optional[str] = None
 
 class DeleteResultRequest(BaseModel):
     emr_type_id: str
@@ -529,29 +537,12 @@ HTML CONTENT: {html_content_for_gpt}"""
         # Enhance the response with api_names
         enhanced_response_data = enhance_response_with_api_names(json.loads(cleaned_response), db)
         
-        # Save the cleaned response to the database
+        # Save the cleaned json response to the database in the response field
         update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
         debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
 
         return {"result": combined_response}
 
-# The save button on top from the instructions box in EMR Type Details was calling this but for now we took down that save button with instructions box from the fe
-@router.post("/save-response/")
-def save_response(
-    req: SaveResponseRequest,
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
-):
-    """Save a response to the EMR type"""
-    emr_type_id = req.emr_type_id
-    emr = get_emr_type(db, emr_type_id)
-    if not emr:
-        raise HTTPException(status_code=404, detail="EMR type not found")
-
-    # Update the EMR type with the response
-    updated_emr = update_emr_type(db, emr_type_id, response=req.response)
-
-    return {"message": "Response saved successfully", "emr_type_id": emr_type_id}
 
 
 #Analyze button from the fe is calling this API
@@ -638,11 +629,11 @@ async def analyze_emr_type(
 
         # Get all custom instructions from emr_type_results table
         results = get_emr_type_results_by_emr_type(db, emr_type_id)
-        results = [result for result in results if result.status != "confirmed"]
+        results = [result for result in results if result.status != "confirmed" and result.status != "ignore"]
         custom_instructions = []
 
         # 1. First append: Fields without instructions from results table
-        fields_without_instructions = [result.key for result in results if result.status != "confirmed" and not (result.instructions and result.instructions.strip())]
+        fields_without_instructions = [result.key for result in results if not (result.instructions and result.instructions.strip())]
         if fields_without_instructions:
             debug("=== DEBUG: Found {} fields without instructions: {} ===")
             field_instructions = "\n".join([f"- {field_name}" for field_name in fields_without_instructions])
@@ -655,27 +646,31 @@ async def analyze_emr_type(
 
         # 3. Third append: Fields that don't exist in results table at all
         all_fields = get_all_emr_type_fields(db)
-        existing_field_names = [result.key for result in results]
 
         # Normalize field names for comparison (remove spaces, dashes, convert to lowercase)
         def normalize_for_comparison(name):
             return name.lower().replace(' ', '').replace('-', '').replace('_', '')
 
+        # # 4. Fourth append: Fields which are missing in all_results table
+        all_results = get_emr_type_results_by_emr_type(db, emr_type_id)
+        all_results = [all_result.key for all_result in all_results]
         missing_fields = [field.name for field in all_fields if field.analyzable != "not_for_analyzing" 
-                         and normalize_for_comparison(field.name) not in
-                         [normalize_for_comparison(name) for name in existing_field_names]]
-
+                          and normalize_for_comparison(field.name) not in
+                         [normalize_for_comparison(name) for name in all_results]]
         if missing_fields:
             debug("=== DEBUG: Found {} missing fields: {} ===")
-            field_instructions = "\n".join([f"- {field_name}" for field_name in missing_fields])
+            # Get instructions for missing fields from emr_type_fields table
+            missing_field_instructions = []
+            for field_name in missing_fields:
+                # Find the field in all_fields to get its instructions
+                field_obj = next((field for field in all_fields if field.name == field_name), None)
+                if field_obj and field_obj.instructions and field_obj.instructions.strip():
+                    missing_field_instructions.append(f"- {field_name}: {field_obj.instructions}")
+                else:
+                    missing_field_instructions.append(f"- {field_name}")
+            
+            field_instructions = "\n".join(missing_field_instructions)
             custom_instructions.append(f"Additional fields to extract:\n{field_instructions}")
-
-        # 4. Fourth append: Manual fields from manual_fields table for this EMR type
-        # manual_fields = get_manual_fields_by_emr_type(db, emr_type_id)
-        # if manual_fields:
-        #     debug("=== DEBUG: Found {} manual fields: {} ===")
-        #     manual_field_instructions = "\n".join([f"- {field.name}" for field in manual_fields])
-        #     custom_instructions.append(f"Additional fields to extract:\n{manual_field_instructions}")
 
         # Combine all instructions into one big instruction
         combined_instructions = "\n".join(custom_instructions)
@@ -913,7 +908,7 @@ async def save_selected_chunk(
         }
     }
 
-    # Save the generated JSON instructions to the EMR type
+    # Save the generated JSON instructions to the EMR type in the instructions field
     import json
     json_instructions_string = json.dumps(json_instructions)
     update_emr_type(db, emr_type_id, instructions=json_instructions_string)

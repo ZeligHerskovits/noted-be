@@ -10,6 +10,8 @@ import certifi
 import mimetypes
 from datetime import datetime
 from pydantic import BaseModel
+
+from app.routes.ai import SaveSessionInstructionsRequest
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from ..db import get_db
@@ -115,6 +117,46 @@ async def create_emr_type_with_files(
         files=files_data
     )
     return emr_type
+import html
+import re
+@router.post("/save-session-instructions/")
+def save_session_instructions(
+    req: SaveSessionInstructionsRequest,
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+):
+    """Save a session_instructions to the EMR type"""
+    emr_type_id = req.emr_type_id
+    emr = get_emr_type(db, emr_type_id)
+    if not emr:
+        raise HTTPException(status_code=404, detail="EMR type not found")
+
+    # Parse the session instructions into the three sections if not provided
+    from ..crud import parse_s3_instructions_into_sections
+    
+    if req.methods_instructions and req.progress_towards_goal_instructions and req.recommended_changes_instructions:
+        # Use the provided individual fields and clean them
+        methods_instructions = re.sub(r'\s+', ' ', html.unescape(req.methods_instructions)).strip()
+        progress_towards_goal_instructions = re.sub(r'\s+', ' ', html.unescape(req.progress_towards_goal_instructions)).strip()
+        recommended_changes_instructions = re.sub(r'\s+', ' ', html.unescape(req.recommended_changes_instructions)).strip()
+    else:
+        # Parse from session_instructions if individual fields not provided
+        parsed_sections = parse_s3_instructions_into_sections(req.session_instructions)
+        methods_instructions = parsed_sections['methods_instructions']
+        progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
+        recommended_changes_instructions = parsed_sections['recommended_changes_instructions']
+
+    # Update the EMR type with all fields
+    update_emr_type(
+        db, 
+        emr_type_id, 
+        session_instructions=req.session_instructions,
+        methods_instructions=methods_instructions,
+        progress_towards_goal_instructions=progress_towards_goal_instructions,
+        recommended_changes_instructions=recommended_changes_instructions
+    )
+
+    return {"message": "session_instructions saved successfully", "emr_type_id": emr_type_id}
 
 # Get all EMR types
 @router.get("/", response_model=List[EmrTypeResponse])
@@ -609,7 +651,7 @@ def create_field(
 ):
     """Create a new EMR type field"""
     try:
-        db_field = create_emr_type_field(db, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name, dropdown_values=field.dropdown_values)
+        db_field = create_emr_type_field(db, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name, dropdown_values=field.dropdown_values, instructions=field.instructions)
         return db_field
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -643,7 +685,7 @@ def update_field(
 ):
     """Update EMR type field"""
     try:
-        db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name, dropdown_values=field.dropdown_values)
+        db_field = update_emr_type_field(db, field_id, name=field.name, type=field.type, analyzable=field.analyzable, api_name=field.api_name, dropdown_values=field.dropdown_values, instructions=field.instructions)
         if not db_field:
             raise HTTPException(status_code=404, detail="Field not found")
         return db_field

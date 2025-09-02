@@ -149,6 +149,9 @@ class EmrTypeUpdate(BaseModel):
     files: Optional[List[EmrTypeFile]] = None
     instructions: Optional[str] = None
     response: Optional[str] = None
+    methods_instructions: Optional[str] = None
+    progress_towards_goal_instructions: Optional[str] = None
+    recommended_changes_instructions: Optional[str] = None
 
 class EmrTypeResponse(BaseModel):
     id: UUID
@@ -161,6 +164,11 @@ class EmrTypeResponse(BaseModel):
     instructions: Optional[str] = None
     response: Optional[str] = None
     status: Optional[str] = None
+    session_instructions: Optional[str] = None
+    methods_instructions: Optional[str] = None
+    progress_towards_goal_instructions: Optional[str] = None
+    recommended_changes_instructions: Optional[str] = None
+
     
     class Config:
         from_attributes = True
@@ -172,6 +180,7 @@ class EMRTypeFieldCreate(BaseModel):
     analyzable: Optional[str] = None
     api_name: Optional[str] = None
     dropdown_values: Optional[str] = None
+    instructions: Optional[str] = None
 
 class EMRTypeFieldUpdate(BaseModel):
     name: Optional[str] = None
@@ -179,6 +188,7 @@ class EMRTypeFieldUpdate(BaseModel):
     analyzable: Optional[str] = None
     api_name: Optional[str] = None
     dropdown_values: Optional[str] = None
+    instructions: Optional[str] = None
 
 class EMRTypeFieldResponse(BaseModel):
     id: UUID
@@ -187,6 +197,7 @@ class EMRTypeFieldResponse(BaseModel):
     analyzable: Optional[str] = None
     api_name: Optional[str] = None
     dropdown_values: Optional[str] = None
+    instructions: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -285,6 +296,9 @@ class SessionResponse(BaseModel):
     updated_at: datetime
     manual_instructions: Optional[str] = None
     session_response: Optional[str] = None
+    methods_response: Optional[str] = None
+    progress_towards_goal_response: Optional[str] = None
+    recommended_changes_response: Optional[str] = None
     
     # Dynamic fields will be added automatically based on emr_type_fields
     

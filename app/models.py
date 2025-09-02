@@ -69,11 +69,15 @@ class EmrType(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     instructions = Column(String, nullable=True)
+    session_instructions = Column(String, nullable=True)
     response = Column(String, nullable=True)
     status = Column(String(100), nullable=True)
     previous_status = Column(String(100), nullable=True)  # Track previous status before processing
     total_chunks = Column(Integer, nullable=True)
     processed_chunks = Column(Integer, nullable=True)
+    methods_instructions = Column(Text, nullable=True)
+    progress_towards_goal_instructions = Column(Text, nullable=True)
+    recommended_changes_instructions = Column(Text, nullable=True)
 
 class EMRTypeField(Base):
     __tablename__ = "emr_type_fields"
@@ -84,6 +88,7 @@ class EMRTypeField(Base):
     analyzable = Column(Text, nullable=True)
     api_name = Column(Text, nullable=True)
     dropdown_values = Column(Text, nullable=True)
+    instructions = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -111,6 +116,9 @@ class Session(Base):
     emr_name = Column(Text, nullable=True)
     manual_instructions = Column(Text, nullable=True)
     session_response = Column(Text, nullable=True)
+    methods_response = Column(Text, nullable=True)
+    progress_towards_goal_response = Column(Text, nullable=True)
+    recommended_changes_response = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     

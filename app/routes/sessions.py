@@ -55,9 +55,12 @@ def get_session_by_id(
         # Convert session object to dict to include all dynamic fields
         session_dict = {}
         for attr in dir(session):
-            if not attr.startswith('_'):
+            if not attr.startswith('_') and not callable(getattr(session, attr)):
                 value = getattr(session, attr)
-                if not callable(value):
+                # Handle UUID objects
+                if hasattr(value, '__str__'):
+                    session_dict[attr] = str(value)
+                else:
                     session_dict[attr] = value
         
         return session_dict
@@ -101,10 +104,14 @@ def list_sessions(
         for session in sessions:
             session_dict = {}
             for attr in dir(session):
-                if not attr.startswith('_'):
+                if not attr.startswith('_') and not callable(getattr(session, attr)):
                     value = getattr(session, attr)
-                    if not callable(value):
-                        session_dict[attr] = value
+                    # Handle UUID objects
+                    if hasattr(value, '__str__'):
+                        session_dict[attr] = str(value)
+                    else:
+                        session_dict[attr] = value 
+
             sessions_list.append(session_dict)
 
         return sessions_list
@@ -186,6 +193,7 @@ def delete_session_by_id(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to delete session")
 
+# Generate sessions button is calling that api endpoint
 @sessions_router.post("/{session_id}/generate", response_model=dict)
 def generate_session(
     session_id: UUID,
@@ -205,58 +213,55 @@ def generate_session(
         #         raise HTTPException(status_code=403, detail="Not authorized to access this session")
         
         # Get instructions from user
-        session_instructions = current_user.session_instructions if hasattr(current_user, 'session_instructions') and current_user.session_instructions else ""
+        user_session_instructions = current_user.session_instructions if hasattr(current_user, 'session_instructions') and current_user.session_instructions else ""
 
         # Get instructions from that session
         manual_instructions = session.manual_instructions if session.manual_instructions else ""
+        
+        # Get emr_type to access session_instructions
+        from ..models import EmrType
+        emr_type = db.query(EmrType).filter(EmrType.id == session.emr_type_id).first()
+        
+        # Get the 3 separate instruction fields from EMR type
+        methods_instructions = emr_type.methods_instructions if emr_type and emr_type.methods_instructions else ""
+        progress_instructions = emr_type.progress_towards_goal_instructions if emr_type and emr_type.progress_towards_goal_instructions else ""
+        recommended_changes_instructions = emr_type.recommended_changes_instructions if emr_type and emr_type.recommended_changes_instructions else ""
         
         # Build combined instructions
         combined_instructions = []
         
         # Add user instructions first (highest priority)
-        if session_instructions:
-            combined_instructions.append(f"session_instructions: {session_instructions}")
+        if user_session_instructions:
+            combined_instructions.append(f"user_session_instructions: {user_session_instructions}")
         
         # Add session instructions second
         if manual_instructions:
             combined_instructions.append(f"manual_instructions: {manual_instructions}")
         
-        # Add my static instructions last
-        static_instructions = """
-        Analyze the provided session data and provide the following:
+        # Add EMR type instructions (the 3 separate fields)
+        if methods_instructions:
+            combined_instructions.append(f"methods_instructions: {methods_instructions}")
+        if progress_instructions:
+            combined_instructions.append(f"progress_towards_goal_instructions: {progress_instructions}")
+        if recommended_changes_instructions:
+            combined_instructions.append(f"recommended_changes_instructions: {recommended_changes_instructions}")
 
-        1. **Session Summary**: Create a brief summary of the session including client name, date, duration, and key details
-        2. **Service Analysis**: Analyze the service provided, staff involved, and program details
-        3. **Location Assessment**: Review the session location and delivery method
-        4. **No-Show Analysis**: If this was a no-show, provide insights and recommendations
-        5. **Recommendations**: Provide 3-5 actionable recommendations based on the session data
-        6. **Risk Assessment**: Identify any potential issues or concerns
-        7. **Follow-up Actions**: Suggest appropriate follow-up actions
-
-        Format your response as a structured analysis with clear sections.
-        """
-        combined_instructions.append(f"Analysis Instructions: {static_instructions}")
-        
         # Combine all instructions
         ai_instructions = "\n\n".join(combined_instructions)
         
-        # Prepare session data for OpenAI (excluding static/manual instructions)
-        session_data = {
-            "session_id": str(session.id),
-            "client_id": str(session.client_id),
-            "emr_type_id": str(session.emr_type_id),
-            "emr_name": session.emr_name,
-            "client": session.client,
-            "appt_date": str(session.appt_date) if session.appt_date else None,
-            "duration": session.duration,
-            "is_no_show": session.is_no_show,
-            "no_show_action": session.no_show_action,
-            "staff_providing_service": session.staff_providing_service,
-            "program_name": session.program_name,
-            "location_where_session_took_place": session.location_where_session_took_place,
-            "service_facility_address": session.service_facility_address,
-            "delivered_off_site": session.delivered_off_site
-        }
+        # Prepare session data for OpenAI (all fields from session)
+        session_data = {}
+        for attr in dir(session):
+           if not attr.startswith('_') and not callable(getattr(session, attr)):
+               value = getattr(session, attr)
+               # Skip UUID fields
+               if isinstance(value, UUID):
+                   continue
+               # Convert dates to strings for JSON serialization
+               if hasattr(value, '__str__') and not isinstance(value, (str, int, float, bool, type(None))):
+                  session_data[attr] = str(value)
+               else:
+                  session_data[attr] = value
         
         # Prepare prompt for OpenAI
         prompt = f"""
@@ -290,12 +295,66 @@ Please provide a comprehensive analysis based on the instructions above.
             
             ai_content = response.choices[0].message.content
             
-            # Save AI response to database
-            session.session_response = ai_content
+            # Parse AI response to extract the 3 sections
+            methods = ""
+            progress_towards_goal = ""
+            recommended_changes = ""
+
+            # Split the response by sections
+            if "Section 1:" in ai_content:
+                # Extract Methods section
+                methods_start = ai_content.find("Section 1:")
+                methods_end = ai_content.find("Section 2:") if "Section 2:" in ai_content else len(ai_content)
+                methods = ai_content[methods_start:methods_end].strip()
+                
+                # Remove the "Section 1:" header
+                if methods.startswith("Section 1:"):
+                    methods = methods.replace("Section 1: Field Methods", "").strip()
+
+            if "Section 2:" in ai_content:
+                # Extract Progress towards goal section
+                progress_start = ai_content.find("Section 2:")
+                progress_end = ai_content.find("Section 3:") if "Section 3:" in ai_content else len(ai_content)
+                progress_towards_goal = ai_content[progress_start:progress_end].strip()
+                
+                # Remove the "Section 2:" header
+                if progress_towards_goal.startswith("Section 2:"):
+                    progress_towards_goal = progress_towards_goal.replace("Section 2: Field Progress_towards_goal", "").strip()
+
+            if "Section 3:" in ai_content:
+                # Extract Recommended changes section
+                changes_start = ai_content.find("Section 3:")
+                recommended_changes = ai_content[changes_start:].strip()
+                
+                # Remove the "Section 3:" header
+                if recommended_changes.startswith("Section 3:"):
+                    recommended_changes = recommended_changes.replace("Section 3: Recommended_changes", "").strip()
+
+            # Save AI response and parsed sections to database
+            # Debug: Print what we're trying to save
+            debug("DEBUG: methods = '{}'", methods)
+            debug("DEBUG: progress_towards_goal = '{}'", progress_towards_goal)
+            debug("DEBUG: recommended_changes = '{}'", recommended_changes)
+
+            # Debug: Check session object
+            debug("DEBUG: session object type = {}", type(session))
+            debug("DEBUG: session has methods_response attr = {}", hasattr(session, 'methods_response'))
+
+            session.methods_response = methods
+            session.progress_towards_goal_response = progress_towards_goal
+            session.recommended_changes_response = recommended_changes
+
+            # Debug: Check if values were set
+            debug("DEBUG: After setting - methods_response = '{}'", session.methods_response)
+            debug("DEBUG: After setting - progress_towards_goal_response = '{}'", session.progress_towards_goal_response)
+            debug("DEBUG: After setting - recommended_changes_response = '{}'", session.recommended_changes_response)
+
             db.commit()
-            
+
             return {
-                "ai_response": ai_content,
+                "methods": methods,
+                "progress_towards_goal": progress_towards_goal,
+                "recommended_changes": recommended_changes
             }
             
                 
