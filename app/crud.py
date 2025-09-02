@@ -715,11 +715,23 @@ def create_session(db: Session, user_id: UUID, **session_data):
 
 def get_session(db: Session, session_id: UUID):
     """Get session by ID"""
-    from .models import Session as SessionModel
+    from sqlalchemy import text
     
-    # Use SQLAlchemy ORM instead of raw SQL
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    return session
+    # Use raw SQL to get all columns including dynamic ones
+    query = text("SELECT * FROM sessions WHERE id = :session_id")
+    result = db.execute(query, {"session_id": session_id})
+    session_data = result.fetchone()
+    
+    if not session_data:
+        return None
+    
+    # Return simple object with all fields
+    class SessionResult:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+    
+    return SessionResult(**dict(session_data._mapping))
 
 def get_sessions_by_user(db: Session, user_id: UUID):
     """Get all sessions for a specific user"""
