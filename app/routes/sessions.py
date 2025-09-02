@@ -335,9 +335,6 @@ Please provide a comprehensive analysis based on the instructions above.
             debug("DEBUG: methods = '{}'", methods)
             debug("DEBUG: progress_towards_goal = '{}'", progress_towards_goal)
             debug("DEBUG: recommended_changes = '{}'", recommended_changes)
-
-            # Use update_session function to save the data to database
-            from ..crud import update_session
             
             update_data = {
                 'methods_response': methods,
