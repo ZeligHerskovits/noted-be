@@ -336,20 +336,22 @@ Please provide a comprehensive analysis based on the instructions above.
             debug("DEBUG: progress_towards_goal = '{}'", progress_towards_goal)
             debug("DEBUG: recommended_changes = '{}'", recommended_changes)
 
-            # Debug: Check session object
-            debug("DEBUG: session object type = {}", type(session))
-            debug("DEBUG: session has methods_response attr = {}", hasattr(session, 'methods_response'))
-
-            session.methods_response = methods
-            session.progress_towards_goal_response = progress_towards_goal
-            session.recommended_changes_response = recommended_changes
-
-            # Debug: Check if values were set
-            debug("DEBUG: After setting - methods_response = '{}'", session.methods_response)
-            debug("DEBUG: After setting - progress_towards_goal_response = '{}'", session.progress_towards_goal_response)
-            debug("DEBUG: After setting - recommended_changes_response = '{}'", session.recommended_changes_response)
-
-            db.commit()
+            # Use update_session function to save the data to database
+            from ..crud import update_session
+            
+            update_data = {
+                'methods_response': methods,
+                'progress_towards_goal_response': progress_towards_goal,
+                'recommended_changes_response': recommended_changes
+            }
+            
+            debug("DEBUG: About to update session with data: {}", update_data)
+            updated_session = update_session(db, session_id, **update_data)
+            
+            if updated_session:
+                debug("DEBUG: Session updated successfully")
+            else:
+                debug("DEBUG: Failed to update session")
 
             return {
                 "methods": methods,
