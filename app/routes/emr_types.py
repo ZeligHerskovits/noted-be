@@ -119,7 +119,8 @@ async def create_emr_type_with_files(
     return emr_type
 import html
 import re
-@router.post("/save-session-instructions/")
+#Saving changed session instructions is calling this endpoint
+@router.put("/save-session-instructions/")
 def save_session_instructions(
     req: SaveSessionInstructionsRequest,
     db: Session = Depends(get_db),
@@ -435,173 +436,173 @@ def delete_emr_type_endpoint(
 
 #------------------------------------------------------------------------------------------------------
 
-# This is not getting called as of Augest 20 from frontend
-@router.post("/{emr_type_id}/upload-files")
-def upload_files_to_emr_type(
-    emr_type_id: UUID,
-    files: List[UploadFile] = File(...),
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
-):
-    """Upload files to an existing EMR type"""
-    try:
-        emr_type = get_emr_type(db, emr_type_id)
-        if not emr_type:
-            raise HTTPException(status_code=404, detail="EMR type not found")
+# # This is not getting called as of Augest 20 from frontend
+# @router.post("/{emr_type_id}/upload-files")
+# def upload_files_to_emr_type(
+#     emr_type_id: UUID,
+#     files: List[UploadFile] = File(...),
+#     db: Session = Depends(get_db),
+#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+# ):
+#     """Upload files to an existing EMR type"""
+#     try:
+#         emr_type = get_emr_type(db, emr_type_id)
+#         if not emr_type:
+#             raise HTTPException(status_code=404, detail="EMR type not found")
         
-        # Read existing files or initialize empty list
-        existing_files = emr_type.files or []
+#         # Read existing files or initialize empty list
+#         existing_files = emr_type.files or []
         
-        # Process uploaded files
-        for file in files:
-            file_content = file.file.read()
-            content_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
-            file_url = upload_file_to_s3(file_content, file.filename, content_type)
-            file_data = {
-                "name": file.filename,
-                "url": file_url,
-                "type": content_type,
-                "size": len(file_content)
-            }
-            existing_files.append(file_data)
+#         # Process uploaded files
+#         for file in files:
+#             file_content = file.file.read()
+#             content_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+#             file_url = upload_file_to_s3(file_content, file.filename, content_type)
+#             file_data = {
+#                 "name": file.filename,
+#                 "url": file_url,
+#                 "type": content_type,
+#                 "size": len(file_content)
+#             }
+#             existing_files.append(file_data)
         
-        # Update the EMR type with new files
-        updated_emr_type = update_emr_type(
-            db=db,
-            emr_type_id=emr_type_id,
-            files=existing_files
-        )
+#         # Update the EMR type with new files
+#         updated_emr_type = update_emr_type(
+#             db=db,
+#             emr_type_id=emr_type_id,
+#             files=existing_files
+#         )
         
-        return {"message": f"Successfully uploaded {len(files)} files", "emr_type": updated_emr_type}
+#         return {"message": f"Successfully uploaded {len(files)} files", "emr_type": updated_emr_type}
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error uploading files: {str(e)}")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error uploading files: {str(e)}")
 
-# This is not getting called as of Augest 20 from frontend
-@router.get("/{emr_type_id}/files")
-def get_emr_type_files(
-    emr_type_id: UUID, 
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
-):
-    """Get all files for a specific EMR type"""
-    try:
-        emr_type = get_emr_type(db, emr_type_id)
-        if not emr_type:
-            raise HTTPException(status_code=404, detail="EMR type not found")
-        # Patch: update file URLs to signed URLs
-        return {"files": with_signed_urls(emr_type.files or [])}
+# # This is not getting called as of Augest 20 from frontend
+# @router.get("/{emr_type_id}/files")
+# def get_emr_type_files(
+#     emr_type_id: UUID, 
+#     db: Session = Depends(get_db),
+#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+# ):
+#     """Get all files for a specific EMR type"""
+#     try:
+#         emr_type = get_emr_type(db, emr_type_id)
+#         if not emr_type:
+#             raise HTTPException(status_code=404, detail="EMR type not found")
+#         # Patch: update file URLs to signed URLs
+#         return {"files": with_signed_urls(emr_type.files or [])}
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error fetching files: {str(e)}")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error fetching files: {str(e)}")
 
-# This is not getting called as of Augest 20 from frontend
-@router.delete("/{emr_type_id}/files/{file_index}")
-def remove_file_from_emr_type(
-    emr_type_id: UUID, 
-    file_index: int, 
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
-):
-    """Remove a specific file from an EMR type by index"""
-    try:
-        emr_type = get_emr_type(db, emr_type_id)
-        if not emr_type:
-            raise HTTPException(status_code=404, detail="EMR type not found")
+# # This is not getting called as of Augest 20 from frontend
+# @router.delete("/{emr_type_id}/files/{file_index}")
+# def remove_file_from_emr_type(
+#     emr_type_id: UUID, 
+#     file_index: int, 
+#     db: Session = Depends(get_db),
+#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+# ):
+#     """Remove a specific file from an EMR type by index"""
+#     try:
+#         emr_type = get_emr_type(db, emr_type_id)
+#         if not emr_type:
+#             raise HTTPException(status_code=404, detail="EMR type not found")
         
-        existing_files = emr_type.files or []
+#         existing_files = emr_type.files or []
         
-        if file_index < 0 or file_index >= len(existing_files):
-            raise HTTPException(status_code=400, detail="Invalid file index")
+#         if file_index < 0 or file_index >= len(existing_files):
+#             raise HTTPException(status_code=400, detail="Invalid file index")
         
-        # Remove the file at the specified index
-        removed_file = existing_files.pop(file_index)
+#         # Remove the file at the specified index
+#         removed_file = existing_files.pop(file_index)
         
-        # Update the EMR type with the modified files list
-        updated_emr_type = update_emr_type(
-            db=db,
-            emr_type_id=emr_type_id,
-            files=existing_files
-        )
+#         # Update the EMR type with the modified files list
+#         updated_emr_type = update_emr_type(
+#             db=db,
+#             emr_type_id=emr_type_id,
+#             files=existing_files
+#         )
         
-        return {
-            "message": f"Successfully removed file: {removed_file['name']}",
-            "removed_file": removed_file,
-            "remaining_files_count": len(existing_files)
-        }
+#         return {
+#             "message": f"Successfully removed file: {removed_file['name']}",
+#             "removed_file": removed_file,
+#             "remaining_files_count": len(existing_files)
+#         }
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error removing file: {str(e)}")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error removing file: {str(e)}")
 
-# This is not getting called as of Augest 20 from frontend
-@router.put("/{emr_type_id}/files")
-def replace_all_files_in_emr_type(
-    emr_type_id: UUID,
-    files: List[EmrTypeFile],
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
-):
-    """Replace all files in an EMR type with new files"""
-    try:
-        emr_type = get_emr_type(db, emr_type_id)
-        if not emr_type:
-            raise HTTPException(status_code=404, detail="EMR type not found")
+# # This is not getting called as of Augest 20 from frontend
+# @router.put("/{emr_type_id}/files")
+# def replace_all_files_in_emr_type(
+#     emr_type_id: UUID,
+#     files: List[EmrTypeFile],
+#     db: Session = Depends(get_db),
+#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+# ):
+#     """Replace all files in an EMR type with new files"""
+#     try:
+#         emr_type = get_emr_type(db, emr_type_id)
+#         if not emr_type:
+#             raise HTTPException(status_code=404, detail="EMR type not found")
         
-        # Convert files to the format expected by the database
-        files_data = [file.dict() for file in files]
+#         # Convert files to the format expected by the database
+#         files_data = [file.dict() for file in files]
         
-        # Update the EMR type with new files (replaces all existing files)
-        updated_emr_type = update_emr_type(
-            db=db,
-            emr_type_id=emr_type_id,
-            files=files_data
-        )
+#         # Update the EMR type with new files (replaces all existing files)
+#         updated_emr_type = update_emr_type(
+#             db=db,
+#             emr_type_id=emr_type_id,
+#             files=files_data
+#         )
         
-        return {
-            "message": f"Successfully replaced all files. New file count: {len(files_data)}",
-            "emr_type": updated_emr_type
-        }
+#         return {
+#             "message": f"Successfully replaced all files. New file count: {len(files_data)}",
+#             "emr_type": updated_emr_type
+#         }
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error replacing files: {str(e)}")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error replacing files: {str(e)}")
 
-# This is not getting called as of Augest 20 from frontend
-@router.delete("/{emr_type_id}/files")
-def remove_all_files_from_emr_type(
-    emr_type_id: UUID, 
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
-):
-    """Remove all files from an EMR type"""
-    try:
-        emr_type = get_emr_type(db, emr_type_id)
-        if not emr_type:
-            raise HTTPException(status_code=404, detail="EMR type not found")
+# # This is not getting called as of Augest 20 from frontend
+# @router.delete("/{emr_type_id}/files")
+# def remove_all_files_from_emr_type(
+#     emr_type_id: UUID, 
+#     db: Session = Depends(get_db),
+#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+# ):
+#     """Remove all files from an EMR type"""
+#     try:
+#         emr_type = get_emr_type(db, emr_type_id)
+#         if not emr_type:
+#             raise HTTPException(status_code=404, detail="EMR type not found")
         
-        # Update the EMR type with empty files list
-        updated_emr_type = update_emr_type(
-            db=db,
-            emr_type_id=emr_type_id,
-            files=[]
-        )
+#         # Update the EMR type with empty files list
+#         updated_emr_type = update_emr_type(
+#             db=db,
+#             emr_type_id=emr_type_id,
+#             files=[]
+#         )
         
-        return {
-            "message": "Successfully removed all files from EMR type",
-            "emr_type": updated_emr_type
-        }
+#         return {
+#             "message": "Successfully removed all files from EMR type",
+#             "emr_type": updated_emr_type
+#         }
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error removing all files: {str(e)}")
 
 #------------------------------------------------------------------------------------------------------
 
@@ -639,7 +640,6 @@ def finalize_emr_type(
         "message": "EMR type finalized successfully",
         "emr_type": updated_emr_type
     }
-
 
 
 # EMR Type Fields API Endpoints

@@ -27,7 +27,6 @@ from typing import Optional
 load_dotenv()
 
 
-
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -329,14 +328,12 @@ def save_results_to_db_with_label(results: dict, emr_type_id: str, db: Session, 
         ).first()
 
         if existing_result:
-          # Update only the value if status is not "confirmed"
-            if existing_result.status != "confirmed":
-               existing_result.value = value
+            # Will not analyze again if confirmed or ignore so will probably never be one of that 2 statuses
             # Only update status if it's not "ignore"
             if existing_result.status != "ignore" and existing_result.status != "confirmed":
                 existing_result.status = status
             # Update label
-            if existing_result.status != "confirmed":
+            if existing_result.status != "ignore" and existing_result.status != "confirmed":
                existing_result.label = label
             db.commit()
             debug("=== DEBUG: Updated {}: {} (status: {}) (label: {}) (preserved instructions) ===")
@@ -542,7 +539,6 @@ HTML CONTENT: {html_content_for_gpt}"""
         debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
 
         return {"result": combined_response}
-
 
 
 #Analyze button from the fe is calling this API

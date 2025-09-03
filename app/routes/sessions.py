@@ -306,29 +306,17 @@ Please provide a comprehensive analysis based on the instructions above.
                 methods_start = ai_content.find("Section 1:")
                 methods_end = ai_content.find("Section 2:") if "Section 2:" in ai_content else len(ai_content)
                 methods = ai_content[methods_start:methods_end].strip()
-                
-                # Remove the "Section 1:" header
-                if methods.startswith("Section 1:"):
-                    methods = methods.replace("Section 1: Field Methods", "").strip()
 
             if "Section 2:" in ai_content:
                 # Extract Progress towards goal section
                 progress_start = ai_content.find("Section 2:")
                 progress_end = ai_content.find("Section 3:") if "Section 3:" in ai_content else len(ai_content)
                 progress_towards_goal = ai_content[progress_start:progress_end].strip()
-                
-                # Remove the "Section 2:" header
-                if progress_towards_goal.startswith("Section 2:"):
-                    progress_towards_goal = progress_towards_goal.replace("Section 2: Field Progress_towards_goal", "").strip()
 
             if "Section 3:" in ai_content:
                 # Extract Recommended changes section
                 changes_start = ai_content.find("Section 3:")
                 recommended_changes = ai_content[changes_start:].strip()
-                
-                # Remove the "Section 3:" header
-                if recommended_changes.startswith("Section 3:"):
-                    recommended_changes = recommended_changes.replace("Section 3: Recommended_changes", "").strip()
 
             # Save AI response and parsed sections to database
             # Debug: Print what we're trying to save
