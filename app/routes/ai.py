@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 import mimetypes
 from bs4 import BeautifulSoup
 from ..models import EMRTypeResult
-from ..schemas import SaveSelectedChunkRequest
+from ..schemas import SaveSelectedChunkRequest, SelectedFieldData
 from ..debug import debug
 from typing import Optional
 load_dotenv()
@@ -690,7 +690,7 @@ CRITICAL FORMATTING RULES:
 - Do NOT add any formatting characters like ```json, ```, or other code block markers
 - Do NOT include any fields that don't exist in the original instructions
 
-IMPORTANT: Always use the exact field names provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML.
+IMPORTANT: Always use the exact FieldName provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML, never ever return another FieldName not provided in the instructions
 
 IMPORTANT: For each field you extract, also include the actual label from the HTML that you used to find the value. For example, if you asked for "Client" but found "Client Name" in the HTML, include "Client Name" as the label. If you asked for "Appt Date" but found "Appointment Date" in the HTML, include "Appointment Date" as the label.
 
@@ -776,11 +776,12 @@ async def save_selected_chunk(
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(["super_admin"]))
 ):
-    """Save the selected chunk data to database"""
+    """Save the selected chunk data and individual fields to database"""
     emr_type_id = req.emr_type_id
-    selected_chunks = req.selected_chunks
+    selected_chunks = req.selected_chunks or []
+    selected_fields = req.selected_fields or []
 
-    debug("=== DEBUG: Saving {} selected chunks for EMR type {} ===")
+    debug("=== DEBUG: Saving {} selected chunks and {} individual fields for EMR type {} ===", len(selected_chunks), len(selected_fields), emr_type_id)
 
     # Track unique values for each field
     field_values = {}
@@ -848,6 +849,59 @@ async def save_selected_chunk(
 
         debug("=== DEBUG: Parsed results from chunk {}: {} ===")
 
+    # Process individual field selections
+    for field_data in selected_fields:
+        field_name = field_data.field_name
+        field_value = field_data.field_value
+        chunk_index = field_data.chunk_index
+        chunk_label = field_data.chunk_label or ''
+        
+        debug("=== DEBUG: Processing individual field '{}' with value '{}' from chunk {} ===", field_name, field_value, chunk_index)
+        
+        # Extract label from value if present (same logic as chunks)
+        extracted_label = ""
+        clean_value = field_value
+        
+        # Check if value contains (label: ...) pattern
+        if '(label:' in field_value:
+            try:
+                # Find the label part
+                label_start = field_value.find('(label:')
+                label_end = field_value.find(')', label_start)
+                
+                if label_start != -1 and label_end != -1:
+                    # Extract the label content
+                    label_content = field_value[label_start + 7:label_end].strip()  # 7 = len('(label:')
+                    
+                    # Remove the entire (label: ...) part from value
+                    clean_value = field_value[:label_start].strip()
+                    
+                    # Use label if it has content
+                    if label_content:
+                        extracted_label = label_content
+                else:
+                    # Invalid format, keep original value
+                    clean_value = field_value
+            except:
+                # Any error, keep original value
+                clean_value = field_value
+        else:
+            # No label found, keep original value
+            clean_value = field_value
+        
+        # Initialize field if not exists
+        if field_name not in field_values:
+            field_values[field_name] = {'values': set(), 'label': chunk_label}
+        
+        # Add clean value to field (set automatically handles duplicates)
+        field_values[field_name]['values'].add(clean_value)
+        
+        # Update label if we extracted one
+        if extracted_label:
+            field_values[field_name]['label'] = extracted_label
+        
+        debug("=== DEBUG: Added individual field '{}': '{}' (label: '{}') ===", field_name, clean_value, extracted_label or chunk_label)
+
     # Convert sets to lists and save each unique value as separate row
     for field, field_data in field_values.items():
         values_list = list(field_data['values'])  # Convert set to list (sets already handle duplicates)
@@ -914,9 +968,20 @@ async def save_selected_chunk(
     update_emr_type(db, emr_type_id, status='analyzed')
     debug("=== DEBUG: Updated EMR type status to 'analyzed' ===")
 
+    total_selections = len(selected_chunks) + len(selected_fields)
+    message_parts = []
+    if selected_chunks:
+        message_parts.append(f"{len(selected_chunks)} chunk{'' if len(selected_chunks) == 1 else 's'}")
+    if selected_fields:
+        message_parts.append(f"{len(selected_fields)} individual field{'' if len(selected_fields) == 1 else 's'}")
+    
+    message = f"Successfully saved {' and '.join(message_parts) if message_parts else 'no selections'}"
+    
     return {
-        "message": f"Selected chunks saved successfully",
-        "chunks_processed": len(selected_chunks)
+        "message": message,
+        "chunks_processed": len(selected_chunks),
+        "fields_processed": len(selected_fields),
+        "total_processed": total_selections
     }
 
 # Get current analysis progress for a specific EMR type, get called every few seconds from the FE while analyzing

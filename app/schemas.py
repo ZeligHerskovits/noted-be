@@ -248,9 +248,16 @@ class SelectedChunkData(BaseModel):
     selected_chunk_response: str
     selected_chunk_label: Optional[str] = None
 
+class SelectedFieldData(BaseModel):
+    field_name: str
+    field_value: str
+    chunk_index: int
+    chunk_label: Optional[str] = None
+
 class SaveSelectedChunkRequest(BaseModel):
     emr_type_id: str
-    selected_chunks: List[SelectedChunkData]
+    selected_chunks: List[SelectedChunkData] = []
+    selected_fields: List[SelectedFieldData] = []
 
 # Session Schemas
 class SessionCreate(BaseModel):
