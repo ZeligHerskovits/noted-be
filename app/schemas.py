@@ -48,6 +48,12 @@ class UserResponse(BaseModel):
     company: Optional[Any] = None
     user_type: Optional[str] = None
     session_instructions: Optional[str] = None
+    # New fields
+    emr_types: Optional[List[UUID]] = None
+    documentation_methods: Optional[List[UUID]] = None
+    coping_skills: Optional[List[UUID]] = None
+    clinical_specialties: Optional[List[UUID]] = None
+    type_writing: Optional[List[str]] = None
     created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
@@ -59,6 +65,12 @@ class UserUpdate(BaseModel):
     user_type: Optional[str] = None
     is_active: Optional[bool] = None
     session_instructions: Optional[str] = None  # FE sends 'session_instructions', we save as 'session_instructions'
+    # New fields
+    emr_types: Optional[List[UUID]] = None
+    documentation_methods: Optional[List[UUID]] = None
+    coping_skills: Optional[List[UUID]] = None
+    clinical_specialties: Optional[List[UUID]] = None
+    type_writing: Optional[List[str]] = None
     # Add more fields as needed
 
 class CompanyCreate(BaseModel):
@@ -139,13 +151,13 @@ class EmrTypeFile(BaseModel):
 class EmrTypeCreate(BaseModel):
     name: str
     session_type: Optional[str] = None
-    documentation_methods: Optional[str] = None
+    documentation_method_id: Optional[UUID] = None
     files: Optional[List[EmrTypeFile]] = None
 
 class EmrTypeUpdate(BaseModel):
     name: Optional[str] = None
     session_type: Optional[str] = None
-    documentation_methods: Optional[str] = None
+    documentation_method_id: Optional[UUID] = None
     files: Optional[List[EmrTypeFile]] = None
     instructions: Optional[str] = None
     response: Optional[str] = None
@@ -157,7 +169,7 @@ class EmrTypeResponse(BaseModel):
     id: UUID
     name: str
     session_type: Optional[str] = None
-    documentation_methods: Optional[str] = None
+    documentation_method_id: Optional[UUID] = None
     files: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -280,6 +292,7 @@ class SessionUpdate(BaseModel):
     client_id: Optional[UUID] = None
     emr_type_id: Optional[UUID] = None
     manual_instructions: Optional[str] = None
+    feedback: Optional[str] = None
     
     # Dynamic fields (based on emr_type_fields)
     # These will be handled dynamically based on the EMR type
@@ -306,6 +319,7 @@ class SessionResponse(BaseModel):
     methods_response: Optional[str] = None
     progress_towards_goal_response: Optional[str] = None
     recommended_changes_response: Optional[str] = None
+    feedback: Optional[str] = None
     
     # Dynamic fields will be added automatically based on emr_type_fields
     
@@ -330,6 +344,63 @@ class ManualFieldResponse(BaseModel):
     emr_type_id: UUID
     created: datetime
     updated: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Coping Skills Schemas
+class CopingSkillCreate(BaseModel):
+    short_description: str
+    long_description: Optional[str] = None
+
+class CopingSkillUpdate(BaseModel):
+    short_description: Optional[str] = None
+    long_description: Optional[str] = None
+
+class CopingSkillResponse(BaseModel):
+    id: UUID
+    short_description: str
+    long_description: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Clinical Specialties Schemas
+class ClinicalSpecialtyCreate(BaseModel):
+    short_description: str
+    long_description: Optional[str] = None
+
+class ClinicalSpecialtyUpdate(BaseModel):
+    short_description: Optional[str] = None
+    long_description: Optional[str] = None
+
+class ClinicalSpecialtyResponse(BaseModel):
+    id: UUID
+    short_description: str
+    long_description: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Documentation Methods Schemas
+class DocumentationMethodCreate(BaseModel):
+    name: str
+    session_instructions: Optional[str] = None
+
+class DocumentationMethodUpdate(BaseModel):
+    name: Optional[str] = None
+    session_instructions: Optional[str] = None
+
+class DocumentationMethodResponse(BaseModel):
+    id: UUID
+    name: str
+    session_instructions: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True 

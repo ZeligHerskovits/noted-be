@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField
+from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserDocumentationMethod, UserEmrType
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -24,10 +24,41 @@ def get_password_hash(password: str) -> str:
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
-def create_user(db: Session, email: str, password: str, full_name: str, company_id: UUID, mobile_phone: str = None, user_type: str = None):
+def create_user(db: Session, email: str, password: str, full_name: str, company_id: UUID, mobile_phone: str = None, user_type: str = None, 
+                emr_types: List[UUID] = None, documentation_methods: List[UUID] = None, coping_skills: List[UUID] = None, 
+                clinical_specialties: List[UUID] = None, type_writing: List[str] = None):
     hashed_password = get_password_hash(password)
-    user = User(email=email, hashed_password=hashed_password, full_name=full_name, role_id=1, company_id=company_id, mobile_phone=mobile_phone, is_active=False, user_type=user_type)
+    user = User(email=email, hashed_password=hashed_password, full_name=full_name, role_id=1, company_id=company_id, 
+                mobile_phone=mobile_phone, is_active=False, user_type=user_type)
     db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Handle junction table relationships
+    if emr_types:
+        for emr_type_id in emr_types:
+            junction = UserEmrType(user_id=user.id, emr_type_id=emr_type_id)
+            db.add(junction)
+    
+    if documentation_methods:
+        for doc_method_id in documentation_methods:
+            junction = UserDocumentationMethod(user_id=user.id, documentation_method_id=doc_method_id)
+            db.add(junction)
+    
+    if coping_skills:
+        for coping_skill_id in coping_skills:
+            junction = UserCopingSkill(user_id=user.id, coping_skill_id=coping_skill_id)
+            db.add(junction)
+    
+    if clinical_specialties:
+        for clinical_specialty_id in clinical_specialties:
+            junction = UserClinicalSpecialty(user_id=user.id, clinical_specialty_id=clinical_specialty_id)
+            db.add(junction)
+    
+    if type_writing:
+        # SQLAlchemy handles PostgreSQL array conversion automatically
+        user.type_writing = type_writing
+    
     db.commit()
     db.refresh(user)
     return user
@@ -95,6 +126,26 @@ def get_all_users_with_roles(db: Session):
         user_dict['company_name'] = companies.get(user.company_id)
         user_dict['role_name'] = roles.get(user.role_id)
         user_dict['is_active'] = user.is_active
+        
+        # Get related data from junction tables
+        user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == user.id).all()]
+        user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user.id).all()]
+        user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user.id).all()]
+        user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user.id).all()]
+        # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
+        if user.type_writing:
+            if isinstance(user.type_writing, list):
+                user_dict['type_writing'] = user.type_writing
+            else:
+                # Fallback for string format
+                array_str = str(user.type_writing).strip('{}')
+                if array_str:
+                    user_dict['type_writing'] = [item.strip('"') for item in array_str.split(',')]
+                else:
+                    user_dict['type_writing'] = []
+        else:
+            user_dict['type_writing'] = []
+        
         enriched_users.append(user_dict)
     return enriched_users
 
@@ -221,20 +272,36 @@ def parse_s3_instructions_into_sections(instructions_text: str):
         }
 # EMR Type CRUD operations
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
-                   documentation_methods: Optional[str] = None, files: Optional[List[dict]] = None,
+                   documentation_method_id: Optional[UUID] = None, files: Optional[List[dict]] = None,
                    instructions: Optional[str] = None, response: Optional[str] = None):
-    default_session_instructions = get_default_session_instructions_from_s3()
     
-    # Parse the S3 instructions into the three sections
-    parsed_sections = parse_s3_instructions_into_sections(default_session_instructions)
+    # Get session instructions from the selected documentation method
+    session_instructions = None
+    parsed_sections = {
+        'methods_instructions': '',
+        'progress_towards_goal_instructions': '',
+        'recommended_changes_instructions': ''
+    }
+    
+    if documentation_method_id:
+        # Get the documentation method and its session instructions
+        doc_method = get_documentation_method(db, documentation_method_id)
+        if doc_method and doc_method.session_instructions:
+            session_instructions = doc_method.session_instructions
+            # Parse the documentation method's session instructions into the three sections
+            parsed_sections = parse_s3_instructions_into_sections(session_instructions)
+    else:
+        # Fallback to S3 if no documentation method is selected
+        session_instructions = get_default_session_instructions_from_s3()
+        parsed_sections = parse_s3_instructions_into_sections(session_instructions)
     
     emr_type = EmrType(
         name=name,
         session_type=session_type,
-        documentation_methods=documentation_methods,
+        documentation_method_id=documentation_method_id,
         files=files,
         instructions=instructions,
-        session_instructions=default_session_instructions,  # Use S3 instructions
+        session_instructions=session_instructions,  # Use documentation method's session instructions
         response=response,
         status='draft',  # Set default status to draft
         methods_instructions=parsed_sections['methods_instructions'],
@@ -253,7 +320,7 @@ def get_all_emr_types(db: Session):
     return db.query(EmrType).all()
 
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
-                   session_type: Optional[str] = None, documentation_methods: Optional[str] = None,
+                   session_type: Optional[str] = None, documentation_method_id: Optional[UUID] = None,
                    files: Optional[List[dict]] = None, instructions: Optional[str] = None,
                    response: Optional[str] = None, session_instructions: Optional[str] = None, status: Optional[str] = None,
                    previous_status: Optional[str] = None,
@@ -270,8 +337,18 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.name = name
     if session_type is not None:
         emr_type.session_type = session_type
-    if documentation_methods is not None:
-        emr_type.documentation_methods = documentation_methods
+    if documentation_method_id is not None:
+        emr_type.documentation_method_id = documentation_method_id
+        
+        # If documentation method changed, update session instructions from the new method
+        doc_method = get_documentation_method(db, documentation_method_id)
+        if doc_method and doc_method.session_instructions:
+            # Parse the new documentation method's session instructions
+            parsed_sections = parse_s3_instructions_into_sections(doc_method.session_instructions)
+            emr_type.session_instructions = doc_method.session_instructions
+            emr_type.methods_instructions = parsed_sections['methods_instructions']
+            emr_type.progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
+            emr_type.recommended_changes_instructions = parsed_sections['recommended_changes_instructions']
     if files is not None:
         emr_type.files = files
     if instructions is not None:
@@ -941,4 +1018,193 @@ def delete_manual_field(db: Session, field_id: UUID):
 
     db.delete(manual_field)
     db.commit()
-    return True 
+    return True
+
+# Coping Skills CRUD operations
+def create_coping_skill(db: Session, short_description: str, long_description: Optional[str] = None):
+    """Create a new coping skill"""
+    coping_skill = CopingSkill(short_description=short_description, long_description=long_description)
+    db.add(coping_skill)
+    db.commit()
+    db.refresh(coping_skill)
+    return coping_skill
+
+def get_coping_skill(db: Session, coping_skill_id: UUID):
+    """Get coping skill by ID"""
+    return db.query(CopingSkill).filter(CopingSkill.id == coping_skill_id).first()
+
+def get_all_coping_skills(db: Session):
+    """Get all coping skills"""
+    return db.query(CopingSkill).all()
+
+def update_coping_skill(db: Session, coping_skill_id: UUID, short_description: Optional[str] = None, long_description: Optional[str] = None):
+    """Update a coping skill"""
+    coping_skill = get_coping_skill(db, coping_skill_id)
+    if not coping_skill:
+        return None
+
+    if short_description is not None:
+        coping_skill.short_description = short_description
+    if long_description is not None:
+        coping_skill.long_description = long_description
+
+    db.commit()
+    db.refresh(coping_skill)
+    return coping_skill
+
+def delete_coping_skill(db: Session, coping_skill_id: UUID):
+    """Delete a coping skill"""
+    coping_skill = get_coping_skill(db, coping_skill_id)
+    if not coping_skill:
+        return False
+
+    db.delete(coping_skill)
+    db.commit()
+    return True
+
+# Clinical Specialties CRUD operations
+def create_clinical_specialty(db: Session, short_description: str, long_description: Optional[str] = None):
+    """Create a new clinical specialty"""
+    clinical_specialty = ClinicalSpecialty(short_description=short_description, long_description=long_description)
+    db.add(clinical_specialty)
+    db.commit()
+    db.refresh(clinical_specialty)
+    return clinical_specialty
+
+def get_clinical_specialty(db: Session, clinical_specialty_id: UUID):
+    """Get clinical specialty by ID"""
+    return db.query(ClinicalSpecialty).filter(ClinicalSpecialty.id == clinical_specialty_id).first()
+
+def get_all_clinical_specialties(db: Session):
+    """Get all clinical specialties"""
+    return db.query(ClinicalSpecialty).all()
+
+def update_clinical_specialty(db: Session, clinical_specialty_id: UUID, short_description: Optional[str] = None, long_description: Optional[str] = None):
+    """Update a clinical specialty"""
+    clinical_specialty = get_clinical_specialty(db, clinical_specialty_id)
+    if not clinical_specialty:
+        return None
+
+    if short_description is not None:
+        clinical_specialty.short_description = short_description
+    if long_description is not None:
+        clinical_specialty.long_description = long_description
+
+    db.commit()
+    db.refresh(clinical_specialty)
+    return clinical_specialty
+
+def delete_clinical_specialty(db: Session, clinical_specialty_id: UUID):
+    """Delete a clinical specialty"""
+    clinical_specialty = get_clinical_specialty(db, clinical_specialty_id)
+    if not clinical_specialty:
+        return False
+
+    db.delete(clinical_specialty)
+    db.commit()
+    return True
+
+# Documentation Methods CRUD operations
+def create_documentation_method(db: Session, name: str, session_instructions: Optional[str] = None):
+    """Create a new documentation method"""
+    documentation_method = DocumentationMethod(name=name, session_instructions=session_instructions)
+    db.add(documentation_method)
+    db.commit()
+    db.refresh(documentation_method)
+    return documentation_method
+
+def get_documentation_method(db: Session, documentation_method_id: UUID):
+    """Get documentation method by ID"""
+    return db.query(DocumentationMethod).filter(DocumentationMethod.id == documentation_method_id).first()
+
+def get_all_documentation_methods(db: Session):
+    """Get all documentation methods"""
+    return db.query(DocumentationMethod).all()
+
+def update_documentation_method(db: Session, documentation_method_id: UUID, name: Optional[str] = None, session_instructions: Optional[str] = None):
+    """Update a documentation method"""
+    documentation_method = get_documentation_method(db, documentation_method_id)
+    if not documentation_method:
+        return None
+
+    if name is not None:
+        documentation_method.name = name
+    if session_instructions is not None:
+        documentation_method.session_instructions = session_instructions
+
+    db.commit()
+    db.refresh(documentation_method)
+    return documentation_method
+
+def delete_documentation_method(db: Session, documentation_method_id: UUID):
+    """Delete a documentation method"""
+    documentation_method = get_documentation_method(db, documentation_method_id)
+    if not documentation_method:
+        return False
+
+    db.delete(documentation_method)
+    db.commit()
+    return True
+
+# User Update with New Fields
+def update_user_with_relations(db: Session, user_id: UUID, **update_data):
+    """Update user and handle junction table relationships"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    
+    # Update basic user fields
+    for field, value in update_data.items():
+        if field in ['emr_types', 'documentation_methods', 'coping_skills', 'clinical_specialties', 'type_writing']:
+            continue  # Handle these separately
+        if hasattr(user, field) and value is not None:
+            setattr(user, field, value)
+    
+    # Handle junction table updates
+    if 'emr_types' in update_data:
+        # Delete existing relationships
+        db.query(UserEmrType).filter(UserEmrType.user_id == user_id).delete()
+        db.flush()  # Ensure delete is committed before insert
+        # Add new relationships
+        if update_data['emr_types']:
+            for emr_type_id in update_data['emr_types']:
+                junction = UserEmrType(user_id=user_id, emr_type_id=emr_type_id)
+                db.add(junction)
+    
+    if 'documentation_methods' in update_data:
+        # Delete existing relationships
+        db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user_id).delete()
+        db.flush()  # Ensure delete is committed before insert
+        # Add new relationships
+        if update_data['documentation_methods']:
+            for doc_method_id in update_data['documentation_methods']:
+                junction = UserDocumentationMethod(user_id=user_id, documentation_method_id=doc_method_id)
+                db.add(junction)
+    
+    if 'coping_skills' in update_data:
+        # Delete existing relationships
+        db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user_id).delete()
+        db.flush()  # Ensure delete is committed before insert
+        # Add new relationships
+        if update_data['coping_skills']:
+            for coping_skill_id in update_data['coping_skills']:
+                junction = UserCopingSkill(user_id=user_id, coping_skill_id=coping_skill_id)
+                db.add(junction)
+    
+    if 'clinical_specialties' in update_data:
+        # Delete existing relationships
+        db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user_id).delete()
+        db.flush()  # Ensure delete is committed before insert
+        # Add new relationships
+        if update_data['clinical_specialties']:
+            for clinical_specialty_id in update_data['clinical_specialties']:
+                junction = UserClinicalSpecialty(user_id=user_id, clinical_specialty_id=clinical_specialty_id)
+                db.add(junction)
+    
+    if 'type_writing' in update_data:
+        # SQLAlchemy handles PostgreSQL array conversion automatically
+        user.type_writing = update_data['type_writing']
+    
+    db.commit()
+    db.refresh(user)
+    return user 

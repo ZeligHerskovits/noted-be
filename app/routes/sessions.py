@@ -165,6 +165,32 @@ def update_session_by_id(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to update session")
 
+@sessions_router.put("/{session_id}/feedback")
+def update_session_feedback(
+    session_id: UUID,
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+):
+    feedback = request.get("feedback", "")
+    debug("PUT /api/v1/sessions/{}/feedback called with feedback: {}", session_id, feedback)
+    try:
+        # First try to find session by ID
+        db_session = get_session(db, session_id)
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Update the feedback field
+        updated_session = update_session(db, session_id, feedback=feedback)
+        if not updated_session:
+            raise HTTPException(status_code=500, detail="Failed to update feedback")
+        
+        return {"detail": "Feedback updated successfully", "feedback": feedback}
+    except Exception as e:
+        logger.error(f"Error updating session feedback: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to update feedback")
+
 @sessions_router.delete("/{session_id}", response_model=dict)
 def delete_session_by_id(
     session_id: UUID,
@@ -264,7 +290,28 @@ def generate_session(
                   session_data[attr] = value
         
         # Prepare prompt for OpenAI
-        prompt = f"""
+        if session.feedback and session.feedback.strip():
+            # If feedback exists, include it in the prompt
+            prompt = f"""
+{ai_instructions}
+
+Session Data:
+{json.dumps(session_data, indent=2)}
+
+This is the response you gave me based on my instructions above:
+{json.dumps({
+    "methods": session.methods_response or "No previous response",
+    "progress_towards_goal": session.progress_towards_goal_response or "No previous response", 
+    "recommended_changes": session.recommended_changes_response or "No previous response"
+}, indent=2)}
+
+This is my feedback on your response: "{session.feedback}"
+
+Please provide a comprehensive analysis based on the instructions above, taking into account my feedback on your previous response.
+"""
+        else:
+            # Normal prompt without feedback
+            prompt = f"""
 {ai_instructions}
 
 Session Data:

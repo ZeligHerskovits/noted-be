@@ -15,6 +15,7 @@ from .routes import companies
 from .routes import emr_types
 from .routes import ai
 from .routes import sessions
+from .routes import reference_tables
 from .models import Base
 from .db import engine
 from .debug import debug
@@ -146,6 +147,7 @@ app.include_router(emr_types.router, prefix="/api/v1", tags=["EMR Types"])
 app.include_router(emr_types.fields_router, prefix="/api/v1", tags=["EMR Type Fields"])
 app.include_router(emr_types.manual_fields_router, prefix="/api/v1", tags=["Manual Fields"])
 app.include_router(emr_types.results_router, prefix="/api/v1", tags=["EMR Type Results"])
+app.include_router(reference_tables.router, prefix="/api/v1", tags=["Reference Tables"])
 app.include_router(ai.router, prefix="/api/v1", tags=["AI"])
 
 # Root endpoint to test if the API is running

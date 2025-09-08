@@ -309,45 +309,6 @@ def normalize_field_name(field_name):
     return cleaned
 
 
-def save_results_to_db_with_label(results: dict, emr_type_id: str, db: Session, label: str):
-    """Save results to database with label"""
-    for key, value in results.items():
-        # Set status based on value
-        if value and 'not found' in value.lower():
-            status = 'not found'
-        else:
-            status = 'found'
-
-        clean_key = normalize_field_name(key)
-
-        # Check if result already exists to preserve instructions
-        existing_result = db.query(EMRTypeResult).filter(
-            EMRTypeResult.emr_type_id == emr_type_id,
-            EMRTypeResult.key == clean_key,
-            EMRTypeResult.value == value
-        ).first()
-
-        if existing_result:
-            # Will not analyze again if confirmed or ignore so will probably never be one of that 2 statuses
-            # Only update status if it's not "ignore"
-            if existing_result.status != "ignore" and existing_result.status != "confirmed":
-                existing_result.status = status
-            # Update label
-            if existing_result.status != "ignore" and existing_result.status != "confirmed":
-               existing_result.label = label
-            db.commit()
-            debug("=== DEBUG: Updated {}: {} (status: {}) (label: {}) (preserved instructions) ===")
-        else:
-            # Create new result with empty instructions and status
-            create_emr_type_result(
-                db=db,
-                emr_type_id=emr_type_id,
-                key=clean_key,
-                value=value,
-                status=status,
-                label=label
-            )
-            debug("=== DEBUG: Created {}: {} (status: {}) (label: {}) ===")
 
 
 # Genarate Response button from fe is calling that API
@@ -907,62 +868,49 @@ async def save_selected_chunk(
         values_list = list(field_data['values'])  # Convert set to list (sets already handle duplicates)
         label = field_data['label']
 
-        # Check if this field has instructions in the database
-        existing_results = db.query(EMRTypeResult).filter(
+        clean_key = normalize_field_name(key)
+        # Check if this field already exists in the database
+        existing_result = db.query(EMRTypeResult).filter(
             EMRTypeResult.emr_type_id == emr_type_id,
-            EMRTypeResult.key == field
-        ).all()
+            EMRTypeResult.key == clean_key
+        ).first()
 
-        # Find instruction row (has instructions)
-        instruction_row = None
-        for result in existing_results:
-            if result.instructions and result.instructions.strip():
-                instruction_row = result
-                break
-
-        # If instruction row exists, update it with the best value
-        if instruction_row and values_list:
-            # Find the best value (first non-"Not found")
-            best_value = None
-            best_label = ""
+        # Find the best value to use
+        best_value = None
+        best_label = ""
+        
+        if selected_chunks:
             for value in values_list:
                 if value.lower() != "not found":
                     best_value = value
                     best_label = label
                     break
+        elif selected_fields:
+            best_value = values_list[0] if values_list else None
+            best_label = label
 
-            # If we found a good value, update the instruction row
-            if best_value:
-                instruction_row.value = best_value
-                instruction_row.label = best_label
+        # If we found a good value, either update existing or create new
+        if best_value:
+            if existing_result and existing_result.status != "ignore" and existing_result.status != "confirmed":
+                # Update existing result with new value and label
+                existing_result.value = best_value
+                existing_result.label = best_label
+                existing_result.status = 'found' if 'not found' not in best_value.lower() else 'not found'
                 db.commit()
-                debug("=== DEBUG: Updated instruction row for {}: {} (label: {}) ===")
-                # Skip creating new rows for this key since we updated the instruction row
-                continue  # Skip to next field, don't process other values for this key
-
-        # Save each unique value as separate row in DB (duplicates handled automatically)
-        for value in values_list:
-            # Save this field-value-label pair to DB
-            save_results_to_db_with_label({field: value}, emr_type_id, db, label)
+                debug("=== DEBUG: Updated existing field {}: {} (label: {}) ===", field, best_value, best_label)
+            else:
+                # Create new result
+                create_emr_type_result(
+                    db=db,
+                    emr_type_id=emr_type_id,
+                    key=field,
+                    value=best_value,
+                    status='found' if 'not found' not in best_value.lower() else 'not found',
+                    label=best_label
+                )
+                debug("=== DEBUG: Created new field {}: {} (label: {}) ===", field, best_value, best_label)
 
     debug("=== DEBUG: Saved {} fields with multiple values ===")
-
-    # Use static JSON instructions format
-    json_instructions = {
-        "Example Field": {
-            "value": "example value",
-            "source": {
-                "selector": "use CSS selector (.class, #id, tag, [attribute], :pseudo-class, etc.) to locate the element containing this data",
-                "attribute": "use the right attribute (textContent, innerHTML, href, src, title, value, alt, data-*, etc.) to extract the data from the element"
-            }
-        }
-    }
-
-    # Save the generated JSON instructions to the EMR type in the instructions field
-    import json
-    json_instructions_string = json.dumps(json_instructions)
-    update_emr_type(db, emr_type_id, instructions=json_instructions_string)
-    debug("=== DEBUG: Saved generated JSON instructions to EMR type ===")
 
     # Update status to 'analyzed' after successful analysis
     update_emr_type(db, emr_type_id, status='analyzed')

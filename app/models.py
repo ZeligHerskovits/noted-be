@@ -20,6 +20,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     user_type = Column(String(100), nullable=True)
     session_instructions = Column(Text, nullable=True)
+    type_writing = Column(Text, nullable=True)  # Store as PostgreSQL array string
     created_at = Column(DateTime, server_default=func.now())
 
 class Otp(Base):
@@ -64,7 +65,7 @@ class EmrType(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String(255), nullable=False)
     session_type = Column(String, nullable=True)
-    documentation_methods = Column(String, nullable=True)
+    documentation_method_id = Column(UUID(as_uuid=True), ForeignKey("documentation_methods.id"), nullable=True)
     files = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -134,4 +135,64 @@ class ManualField(Base):
     emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
     type = Column(Text, nullable=True)
     created = Column(DateTime, server_default=func.now())
-    updated = Column(DateTime, server_default=func.now(), onupdate=func.now()) 
+    updated = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class CopingSkill(Base):
+    __tablename__ = "coping_skills"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    short_description = Column(Text, nullable=False)
+    long_description = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class ClinicalSpecialty(Base):
+    __tablename__ = "clinical_specialties"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    short_description = Column(Text, nullable=False)
+    long_description = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class DocumentationMethod(Base):
+    __tablename__ = "documentation_methods"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    name = Column(Text, nullable=False)
+    session_instructions = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+# Junction Tables for User Relationships
+class UserCopingSkill(Base):
+    __tablename__ = "user_coping_skills"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    coping_skill_id = Column(UUID(as_uuid=True), ForeignKey("coping_skills.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+class UserClinicalSpecialty(Base):
+    __tablename__ = "user_clinical_specialties"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    clinical_specialty_id = Column(UUID(as_uuid=True), ForeignKey("clinical_specialties.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+class UserDocumentationMethod(Base):
+    __tablename__ = "user_documentation_methods"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    documentation_method_id = Column(UUID(as_uuid=True), ForeignKey("documentation_methods.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+class UserEmrType(Base):
+    __tablename__ = "user_emr_types"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now()) 

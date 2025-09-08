@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Security, Response, Cooki
 from sqlalchemy.orm import Session
 from ..db import SessionLocal
 from ..schemas import RegisterRequest, LoginRequest, TokenResponse, OTPVerifyRequest, ResetPasswordRequest, ForgotPasswordRequest, UserResponse, UserUpdate, CompanyResponse
-from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash, set_email_verification_token, verify_email_token
+from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash, set_email_verification_token, verify_email_token, update_user_with_relations
 import datetime
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
@@ -318,6 +318,27 @@ def get_me(request: Request, db: Session = Depends(get_db), current_user = Depen
     user_dict['is_active'] = user.is_active
     user_dict['session_instructions'] = user.session_instructions
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
+    
+    # Add junction table data
+    from ..models import UserEmrType, UserDocumentationMethod, UserCopingSkill, UserClinicalSpecialty
+    user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == user.id).all()]
+    user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user.id).all()]
+    user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user.id).all()]
+    user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user.id).all()]
+    # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
+    if user.type_writing:
+        if isinstance(user.type_writing, list):
+            user_dict['type_writing'] = user.type_writing
+        else:
+            # Fallback for string format
+            array_str = str(user.type_writing).strip('{}')
+            if array_str:
+                user_dict['type_writing'] = [item.strip('"') for item in array_str.split(',')]
+            else:
+                user_dict['type_writing'] = []
+    else:
+        user_dict['type_writing'] = []
+    
     return user_dict
 
 @router.put("/me", response_model=UserResponse)
@@ -330,20 +351,43 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
         existing = db.query(User).filter(User.email == update.email, User.id != user.id).first()
         if existing:
             raise HTTPException(status_code=400, detail="Email already in use.")
-    for key, value in update.dict(exclude_unset=True).items():
-        setattr(user, key, value)
-    db.commit()
-    db.refresh(user)
+    
+    # Use the new update function that handles junction tables
+    updated_user = update_user_with_relations(db, current_user.id, **update.dict(exclude_unset=True))
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
     # Enrich user with company_name, role_name, is_active, and company info
-    company = db.query(Company).filter(Company.id == user.company_id).first()
-    role = db.query(Role).filter(Role.id == user.role_id).first()
-    user_response = UserResponse.from_orm(user)
+    company = db.query(Company).filter(Company.id == updated_user.company_id).first()
+    role = db.query(Role).filter(Role.id == updated_user.role_id).first()
+    user_response = UserResponse.from_orm(updated_user)
     user_dict = user_response.dict()
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role.name if role else None
-    user_dict['is_active'] = user.is_active
-    user_dict['session_instructions'] = user.session_instructions
+    user_dict['is_active'] = updated_user.is_active
+    user_dict['session_instructions'] = updated_user.session_instructions
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
+    
+    # Add junction table data
+    from ..models import UserEmrType, UserDocumentationMethod, UserCopingSkill, UserClinicalSpecialty
+    user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == current_user.id).all()]
+    user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == current_user.id).all()]
+    user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == current_user.id).all()]
+    user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == current_user.id).all()]
+    # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
+    if updated_user.type_writing:
+        if isinstance(updated_user.type_writing, list):
+            user_dict['type_writing'] = updated_user.type_writing
+        else:
+            # Fallback for string format
+            array_str = str(updated_user.type_writing).strip('{}')
+            if array_str:
+                user_dict['type_writing'] = [item.strip('"') for item in array_str.split(',')]
+            else:
+                user_dict['type_writing'] = []
+    else:
+        user_dict['type_writing'] = []
+    
     return user_dict
 
 admin_only = get_current_user_with_role(["super_admin"])
