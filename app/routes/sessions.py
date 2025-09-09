@@ -42,11 +42,6 @@ def get_session_by_id(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Check if user has permission to view this session
-        # if current_user.role_id != 3:  # Not super_admin
-        #     if session.user_id != current_user.id:
-        #         raise HTTPException(status_code=403, detail="Not authorized to view this session")
-        
         # Add client name to the single session
         client = next((c for c in clients if c.id == session.client_id), None)
         if client:
@@ -160,11 +155,6 @@ def update_session_by_id(
         if not db_session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Check if user has permission to update this session
-        # if current_user.role_id != 3:  # Not super_admin
-        #     if db_session.user_id != current_user.id:
-        #         raise HTTPException(status_code=403, detail="Not authorized to update this session")
-        
         # Update the session
         session_data = session.dict(exclude_unset=True)
         updated_session = update_session(db, session_id, **session_data)
@@ -213,11 +203,6 @@ def delete_session_by_id(
         if not db_session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Check if user has permission to delete this session
-        # if current_user.role_id != 3:  # Not super_admin
-        #     if db_session.user_id != current_user.id:
-        #         raise HTTPException(status_code=403, detail="Not authorized to delete this session")
-        
         success = delete_session(db, session_id)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete session")
@@ -242,11 +227,14 @@ def generate_session(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Check if user has permission to access this session
-        # if current_user.role_id != 3:  # Not super_admin
-        #     if session.user_id != current_user.id:
-        #         raise HTTPException(status_code=403, detail="Not authorized to access this session")
-        
+        # Get client history from the session's client
+        from ..models import Client
+        client = db.query(Client).filter(Client.id == session.client_id).first()
+        client_history = client.history if client and client.history else ""
+
+        #Get Type Writing from user
+        type_writing = current_user.type_writing if hasattr(current_user, 'type_writing') and current_user.type_writing else "detailed"
+
         # Get instructions from user
         user_session_instructions = current_user.session_instructions if hasattr(current_user, 'session_instructions') and current_user.session_instructions else ""
 
@@ -265,6 +253,14 @@ def generate_session(
         # Build combined instructions
         combined_instructions = []
         
+         # Add client history
+        if client_history:
+            combined_instructions.append(f"The Clients history is: {client_history}")
+
+        # Add type of writing first
+        if type_writing:
+            combined_instructions.append(f"Type of writing: {type_writing}")
+
         # Add user instructions first (highest priority)
         if user_session_instructions:
             combined_instructions.append(f"user_session_instructions: {user_session_instructions}")

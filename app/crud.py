@@ -243,21 +243,21 @@ def parse_s3_instructions_into_sections(instructions_text: str):
         debug(f"Length of s: {len(s)}")
         debug(f"Length of s[:cut2]: {len(s[:cut2]) if cut2 != -1 else len(s)}")
 
-        # Find 'Section 3:' AFTER the cut (if any)
+        # Find 'Section 3:' AFTER the cut2 (if any)
         s3_idx = s.find('Section 3:', cut2 if cut2 != -1 else 0)
 
-        # 1) methods: start -> SECOND 'Section 2:'
+        # 1) methods_instructions = from begining til second 'Section 2:' or maybe its first Section 2:
         sections['methods_instructions'] = s[:cut2].strip() if cut2 != -1 else s.strip()
         debug(f"Length of methods_instructions: {len(sections['methods_instructions'])}")
 
-        # 2) progress: SECOND 'Section 2:' -> 'Section 3:' (or to end if no Section 3)
+        # 2) progress_towards_goal_instructions: = from SECOND or maybe first 'Section 2:' -> 'Section 3:' (or to end if no Section 3:)
         if cut2 != -1:
             if s3_idx != -1 and s3_idx > cut2:
                 sections['progress_towards_goal_instructions'] = s[cut2:s3_idx].strip()
             else:
                 sections['progress_towards_goal_instructions'] = s[cut2:].strip()
 
-        # 3) recommended: 'Section 3:' -> end
+        # 3) recommended_changes_instructions: = from 'Section 3:' -> end
         if s3_idx != -1:
             sections['recommended_changes_instructions'] = s[s3_idx:].strip()
 

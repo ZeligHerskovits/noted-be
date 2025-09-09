@@ -58,7 +58,8 @@ class Client(Base):
     created_at = Column(DateTime, server_default=func.now())
     collateral_first_name = Column(String(100), nullable=True)
     collateral_last_name = Column(String(100), nullable=True)
-    collateral_email = Column(String(255), nullable=True) 
+    collateral_email = Column(String(255), nullable=True)
+    history = Column(Text, nullable=True) 
 
 class EmrType(Base):
     __tablename__ = "emr_type"

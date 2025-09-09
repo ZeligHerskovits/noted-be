@@ -107,6 +107,7 @@ class ClientCreate(BaseModel):
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[EmailStr] = None
+    history: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -126,6 +127,7 @@ class ClientUpdate(BaseModel):
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[str] = None
+    history: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -147,6 +149,7 @@ class ClientResponse(BaseModel):
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[str] = None
+    history: Optional[str] = None
     
     class Config:
         from_attributes = True
