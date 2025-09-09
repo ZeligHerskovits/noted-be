@@ -5,7 +5,7 @@ from app.models import Session as SessionModel
 from typing import List, Optional
 from app.schemas import SessionCreate, SessionUpdate, SessionResponse
 import logging
-from app.routes.auth import get_current_user_with_role
+from app.routes.auth import get_current_user_with_role, get_current_user_with_role_id
 from datetime import datetime
 from uuid import UUID
 import traceback
@@ -31,7 +31,7 @@ def get_db():
 def get_session_by_id(
     session_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     debug("GET /api/v1/sessions/{} called", session_id)
     try:
@@ -74,7 +74,7 @@ def list_sessions(
     emr_type_id: Optional[UUID] = None,
     client_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     try:
         debug("GET /api/v1/sessions called with emr_type_id: {}, client_id: {}", emr_type_id, client_id)
@@ -84,7 +84,16 @@ def list_sessions(
         # Step 1: Get sessions based on user role
         if current_user.role_id == 3:  # super_admin
             sessions = get_all_sessions(db)
-        else:  # admin or standard
+        elif current_user.role_id == 1:  # admin - see sessions from their company
+            # Get all users from the same company
+            from ..models import User
+            company_users = db.query(User).filter(User.company_id == current_user.company_id).all()
+            company_user_ids = [user.id for user in company_users]
+            sessions = []
+            for user_id in company_user_ids:
+                user_sessions = get_sessions_by_user(db, user_id)
+                sessions.extend(user_sessions)
+        else:  # standard - only their own sessions
             sessions = get_sessions_by_user(db, current_user.id)
         
         # Step 2: Apply filters to the sessions, as of Augest 20 we not using that Step 2 from frontend
@@ -124,7 +133,7 @@ def list_sessions(
 def create_new_session(
     session: SessionCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     debug("POST /api/v1/sessions called with: {}", session)
     try:
@@ -142,7 +151,7 @@ def update_session_by_id(
     session_id: UUID,
     session: SessionUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     debug("PUT /api/v1/sessions/{} called with: {}", session_id, session)
     try:
@@ -170,7 +179,7 @@ def update_session_feedback(
     session_id: UUID,
     request: dict,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     feedback = request.get("feedback", "")
     debug("PUT /api/v1/sessions/{}/feedback called with feedback: {}", session_id, feedback)
@@ -195,7 +204,7 @@ def update_session_feedback(
 def delete_session_by_id(
     session_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     debug("DELETE /api/v1/sessions/{} called", session_id)
     try:
@@ -224,7 +233,7 @@ def delete_session_by_id(
 def generate_session(
     session_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "standard"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     debug("POST /api/v1/sessions/{}/generate called", session_id)
     try:

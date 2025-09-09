@@ -58,6 +58,32 @@ def get_current_user_with_role(required_roles: List[str]):
             raise HTTPException(status_code=401, detail="Invalid token")
     return dependency
 
+def get_current_user_with_role_id(required_role_ids: List[int]):
+    """New dependency function that checks role_id instead of role name"""
+    def dependency(credentials: HTTPAuthorizationCredentials = Security(security), db: Session = Depends(get_db)):
+        token = credentials.credentials
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            email = payload.get("sub")
+            role = payload.get("role")
+            if not email or not role:
+                raise HTTPException(status_code=401, detail="Invalid token")
+            
+            user = get_user_by_email(db, email)
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found")
+            
+            # Check if user's role_id is in the required list
+            if user.role_id not in required_role_ids:
+                raise HTTPException(status_code=403, detail="Forbidden: insufficient role")
+            
+            return user
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expired")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    return dependency
+
 @router.post("/auth/register")
 def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     if get_user_by_email(db, request.email):
@@ -289,7 +315,7 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
     return {"success": True, "message": "Password reset link sent (simulated)"}
 
 @router.get("/me", response_model=UserResponse)
-def get_me(request: Request, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["admin", "super_admin", "user", "standard"]))):
+def get_me(request: Request, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role_id([1, 2, 3]))):  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
     # Try to get token from cookie if not in header
     token = request.cookies.get("access_token")
     if not token:
@@ -342,7 +368,7 @@ def get_me(request: Request, db: Session = Depends(get_db), current_user = Depen
     return user_dict
 
 @router.put("/me", response_model=UserResponse)
-def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["admin", "super_admin", "user", "standard"]))):
+def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role_id([1, 2, 3]))):  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -390,7 +416,7 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
     
     return user_dict
 
-admin_only = get_current_user_with_role(["super_admin"])
+admin_only = get_current_user_with_role_id([3])  # Only Role 3 (super_admin)
 
 @router.get("/admin/dashboard")
 def admin_dashboard(current_user = Depends(admin_only)):

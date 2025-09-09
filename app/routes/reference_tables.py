@@ -20,7 +20,7 @@ from ..crud import (
     create_documentation_method, get_documentation_method, get_all_documentation_methods,
     update_documentation_method, delete_documentation_method
 )
-from app.routes.auth import get_current_user_with_role
+from app.routes.auth import get_current_user_with_role, get_current_user_with_role_id
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ def get_db():
 def create_coping_skill_endpoint(
     coping_skill: CopingSkillCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Create a new coping skill"""
     return create_coping_skill(db, coping_skill.short_description, coping_skill.long_description)
@@ -45,7 +45,7 @@ def create_coping_skill_endpoint(
 @router.get("/coping-skills", response_model=List[CopingSkillResponse])
 def list_coping_skills(
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all coping skills"""
     return get_all_coping_skills(db)
@@ -54,7 +54,7 @@ def list_coping_skills(
 def get_coping_skill_endpoint(
     coping_skill_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get a specific coping skill by ID"""
     coping_skill = get_coping_skill(db, coping_skill_id)
@@ -67,7 +67,7 @@ def update_coping_skill_endpoint(
     coping_skill_id: UUID,
     coping_skill_update: CopingSkillUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update a coping skill"""
     coping_skill = update_coping_skill(
@@ -83,7 +83,7 @@ def update_coping_skill_endpoint(
 def delete_coping_skill_endpoint(
     coping_skill_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete a coping skill"""
     success = delete_coping_skill(db, coping_skill_id)
@@ -96,7 +96,7 @@ def delete_coping_skill_endpoint(
 def create_clinical_specialty_endpoint(
     clinical_specialty: ClinicalSpecialtyCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Create a new clinical specialty"""
     return create_clinical_specialty(db, clinical_specialty.short_description, clinical_specialty.long_description)
@@ -104,7 +104,7 @@ def create_clinical_specialty_endpoint(
 @router.get("/clinical-specialties", response_model=List[ClinicalSpecialtyResponse])
 def list_clinical_specialties(
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all clinical specialties"""
     return get_all_clinical_specialties(db)
@@ -113,7 +113,7 @@ def list_clinical_specialties(
 def get_clinical_specialty_endpoint(
     clinical_specialty_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get a specific clinical specialty by ID"""
     clinical_specialty = get_clinical_specialty(db, clinical_specialty_id)
@@ -126,7 +126,7 @@ def update_clinical_specialty_endpoint(
     clinical_specialty_id: UUID,
     clinical_specialty_update: ClinicalSpecialtyUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update a clinical specialty"""
     clinical_specialty = update_clinical_specialty(
@@ -142,7 +142,7 @@ def update_clinical_specialty_endpoint(
 def delete_clinical_specialty_endpoint(
     clinical_specialty_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete a clinical specialty"""
     success = delete_clinical_specialty(db, clinical_specialty_id)
@@ -155,7 +155,7 @@ def delete_clinical_specialty_endpoint(
 def create_documentation_method_endpoint(
     documentation_method: DocumentationMethodCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Create a new documentation method"""
     return create_documentation_method(db, documentation_method.name, documentation_method.session_instructions)
@@ -163,7 +163,7 @@ def create_documentation_method_endpoint(
 @router.get("/documentation-methods", response_model=List[DocumentationMethodResponse])
 def list_documentation_methods(
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all documentation methods"""
     return get_all_documentation_methods(db)
@@ -172,7 +172,7 @@ def list_documentation_methods(
 def get_documentation_method_endpoint(
     documentation_method_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get a specific documentation method by ID"""
     documentation_method = get_documentation_method(db, documentation_method_id)
@@ -185,7 +185,7 @@ def update_documentation_method_endpoint(
     documentation_method_id: UUID,
     documentation_method_update: DocumentationMethodUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update a documentation method"""
     documentation_method = update_documentation_method(
@@ -201,7 +201,7 @@ def update_documentation_method_endpoint(
 def delete_documentation_method_endpoint(
     documentation_method_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete a documentation method"""
     success = delete_documentation_method(db, documentation_method_id)

@@ -10,6 +10,8 @@ from starlette.responses import Response
 import logging
 import traceback
 from pathlib import Path
+from datetime import date, datetime
+import json
 from .routes import auth, users, Clients
 from .routes import companies
 from .routes import emr_types
@@ -19,6 +21,15 @@ from .routes import reference_tables
 from .models import Base
 from .db import engine
 from .debug import debug
+
+# Custom JSON encoder to handle dates properly
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, date):
+            return obj.isoformat()
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 # Custom middleware to handle large file uploads
 class LargeFileUploadMiddleware(BaseHTTPMiddleware):

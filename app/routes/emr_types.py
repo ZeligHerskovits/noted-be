@@ -15,7 +15,7 @@ from app.routes.ai import SaveSessionInstructionsRequest
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from ..db import get_db
-from ..routes.auth import get_current_user_with_role
+from ..routes.auth import get_current_user_with_role, get_current_user_with_role_id
 from ..schemas import (
     EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile,
     EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse,
@@ -95,7 +95,7 @@ async def create_emr_type_with_files(
     documentation_method_id: Optional[str] = Form(None),
     files: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     files_data = []
     if files:
@@ -151,7 +151,7 @@ import re
 def save_session_instructions(
     req: SaveSessionInstructionsRequest,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Save a session_instructions to the EMR type"""
     emr_type_id = req.emr_type_id
@@ -190,7 +190,7 @@ def save_session_instructions(
 @router.get("/", response_model=List[EmrTypeResponse])
 def get_all_emr_types_endpoint(
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all EMR types"""
     try:
@@ -209,7 +209,7 @@ def get_emr_type_endpoint(
     emr_type_id: UUID, 
     response_only: bool = False, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get a specific EMR type by ID"""
     try:
@@ -236,7 +236,7 @@ def get_emr_type_results(
     emr_type_id: UUID, 
     instructions_only: bool = False, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get all results for a specific EMR type (for frontend display)"""
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
@@ -253,7 +253,7 @@ def update_result_instructions(
     emr_type_id: UUID,
     request: UpdateResultInstructionsRequest,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update instructions for a specific EMR type result by key"""
     from ..models import EMRTypeResult
@@ -287,7 +287,7 @@ def update_result_status(
     emr_type_id: UUID,
     request: UpdateResultStatusRequest,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update status for a specific EMR type result by key and value"""
     from ..models import EMRTypeResult
@@ -329,7 +329,7 @@ def update_result_status(
 def back_action_emr_type(
     emr_type_id: UUID, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """
     Restore the previous status when going back from processing.
@@ -393,7 +393,7 @@ async def update_emr_type_with_files(
     instructions: Optional[str] = Form(None),
     clear_files: Optional[bool] = Form(False),
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     # Get existing EMR type to preserve files if not updating them
     existing_emr_type = get_emr_type(db, emr_type_id)
@@ -455,7 +455,7 @@ async def update_emr_type_with_files(
 def delete_emr_type_endpoint(
     emr_type_id: UUID, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete an EMR type"""
     try:
@@ -477,7 +477,7 @@ def delete_emr_type_endpoint(
 #     emr_type_id: UUID,
 #     files: List[UploadFile] = File(...),
 #     db: Session = Depends(get_db),
-#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+#     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 # ):
 #     """Upload files to an existing EMR type"""
 #     try:
@@ -520,7 +520,7 @@ def delete_emr_type_endpoint(
 # def get_emr_type_files(
 #     emr_type_id: UUID, 
 #     db: Session = Depends(get_db),
-#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+#     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 # ):
 #     """Get all files for a specific EMR type"""
 #     try:
@@ -541,7 +541,7 @@ def delete_emr_type_endpoint(
 #     emr_type_id: UUID, 
 #     file_index: int, 
 #     db: Session = Depends(get_db),
-#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+#     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 # ):
 #     """Remove a specific file from an EMR type by index"""
 #     try:
@@ -581,7 +581,7 @@ def delete_emr_type_endpoint(
 #     emr_type_id: UUID,
 #     files: List[EmrTypeFile],
 #     db: Session = Depends(get_db),
-#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+#     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 # ):
 #     """Replace all files in an EMR type with new files"""
 #     try:
@@ -614,7 +614,7 @@ def delete_emr_type_endpoint(
 # def remove_all_files_from_emr_type(
 #     emr_type_id: UUID, 
 #     db: Session = Depends(get_db),
-#     _: dict = Depends(get_current_user_with_role(["super_admin"]))
+#     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 # ):
 #     """Remove all files from an EMR type"""
 #     try:
@@ -646,7 +646,7 @@ def delete_emr_type_endpoint(
 def finalize_emr_type(
     emr_type_id: UUID, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """
     Finalize an EMR type by changing its status to 'active'.
@@ -682,7 +682,7 @@ def finalize_emr_type(
 def create_field(
     field: EMRTypeFieldCreate, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Create a new EMR type field"""
     try:
@@ -694,7 +694,7 @@ def create_field(
 @fields_router.get("/", response_model=List[EMRTypeFieldResponse])
 def get_fields(
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all EMR type fields"""
     return get_all_emr_type_fields(db)
@@ -703,7 +703,7 @@ def get_fields(
 def get_field(
     field_id: UUID, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get EMR type field by ID"""
     db_field = get_emr_type_field(db, field_id)
@@ -716,7 +716,7 @@ def update_field(
     field_id: UUID, 
     field: EMRTypeFieldUpdate, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update EMR type field"""
     try:
@@ -731,7 +731,7 @@ def update_field(
 def delete_field(
     field_id: UUID, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete EMR type field"""
     success = delete_emr_type_field(db, field_id)
@@ -744,7 +744,7 @@ def delete_field(
 def create_manual_field_endpoint(
     field: ManualFieldCreate, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Create a new manual field"""
     db_field = create_manual_field(db, name=field.name, emr_type_id=field.emr_type_id)
@@ -753,7 +753,7 @@ def create_manual_field_endpoint(
 @manual_fields_router.get("/", response_model=List[ManualFieldResponse])
 def get_all_manual_fields_endpoint(
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    _: dict = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all manual fields from all EMR types"""
     return get_all_manual_fields(db)
@@ -762,7 +762,7 @@ def get_all_manual_fields_endpoint(
 def get_manual_fields_by_emr_type_endpoint(
     emr_type_id: UUID,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get all manual fields for a specific EMR type"""
     return get_manual_fields_by_emr_type(db, emr_type_id)
@@ -772,7 +772,7 @@ def update_manual_field_endpoint(
     field_id: UUID, 
     field: ManualFieldUpdate, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Update manual field"""
     db_field = update_manual_field(db, field_id, name=field.name)
@@ -784,7 +784,7 @@ def update_manual_field_endpoint(
 def delete_manual_field_endpoint(
     field_id: UUID, 
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete manual field"""
     success = delete_manual_field(db, field_id)
@@ -796,7 +796,7 @@ def delete_manual_field_endpoint(
 @results_router.get("/")
 def get_all_emr_type_results_endpoint(
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin", "admin", "user"]))
+    _: dict = Depends(get_current_user_with_role_id([1, 2, 3]))  # Role 1 (admin), Role 2 (standard), and Role 3 (super_admin)
 ):
     """Get all EMR type results with field type and name information"""
     # Get all results

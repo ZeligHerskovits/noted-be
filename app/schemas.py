@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, Any, List, Dict
 from uuid import UUID
 
@@ -12,7 +12,7 @@ class RegisterRequest(BaseModel):
     industry: str
     emr: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -87,7 +87,7 @@ class CompanyResponse(BaseModel):
     created_at: Optional[datetime] = None
     is_active: bool
     class Config:
-        orm_mode = True
+        from_attributes = True
         from_attributes = True
 
 class CompanyUpdate(BaseModel):
@@ -107,6 +107,13 @@ class ClientCreate(BaseModel):
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[EmailStr] = None
+    
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            date: lambda v: v.isoformat() if v else None,
+            datetime: lambda v: v.isoformat() if v else None
+        }
 
 class ClientUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -119,6 +126,13 @@ class ClientUpdate(BaseModel):
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            date: lambda v: v.isoformat() if v else None,
+            datetime: lambda v: v.isoformat() if v else None
+        }
 
 class ClientResponse(BaseModel):
     id: UUID
@@ -133,8 +147,14 @@ class ClientResponse(BaseModel):
     collateral_first_name: Optional[str] = None
     collateral_last_name: Optional[str] = None
     collateral_email: Optional[str] = None
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
+        json_encoders = {
+            date: lambda v: v.isoformat() if v else None,
+            datetime: lambda v: v.isoformat() if v else None
+        }
+        
 
 class EmailVerificationRequest(BaseModel):
     token: str 

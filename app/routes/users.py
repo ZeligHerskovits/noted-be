@@ -4,7 +4,7 @@ from sqlalchemy import text
 from ..db import SessionLocal, DATABASE_URL
 from ..schemas import UserResponse, CompanyCreate, CompanyResponse, UserUpdate
 from ..crud import get_all_users_with_roles, create_company, update_user_with_relations
-from app.routes.auth import get_current_user_with_role
+from app.routes.auth import get_current_user_with_role, get_current_user_with_role_id
 from ..models import Company, User, Role
 from uuid import UUID
 
@@ -19,7 +19,7 @@ def get_db():
 
 @router.get("/users", response_model=list[UserResponse])
 def list_users(
-    current_user = Depends(get_current_user_with_role(["super_admin", "admin"])),
+    current_user = Depends(get_current_user_with_role_id([1, 3])),  # Role 1 (admin) and Role 3 (super_admin)
     db: Session = Depends(get_db)
 ):
     if getattr(current_user, 'role_id', None) == 3:  # super_admin
@@ -63,7 +63,7 @@ def db_health_check():
         }
 
 @router.delete("/users/{user_id}", response_model=dict)
-def delete_user(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin"]))):
+def delete_user(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role_id([3]))):  # Only Role 3 (super_admin)
     user_to_delete = db.query(User).filter(User.id == user_id).first()
     if not user_to_delete:
         raise HTTPException(status_code=404, detail="User not found")
@@ -72,15 +72,13 @@ def delete_user(user_id: UUID, db: Session = Depends(get_db), current_user = Dep
     return {"detail": "User deleted"}
 
 @router.get("/users/{user_id}", response_model=UserResponse)
-def get_user_profile(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role(["super_admin", "admin"]))):
+def get_user_profile(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user_with_role_id([1, 3]))):  # Role 1 (admin) and Role 3 (super_admin)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     # super_admin can view any user; admin can only view users from their own company
     if getattr(current_user, 'role_id', None) == 1 and user.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="Forbidden: Cannot view users from another company.")
-    if getattr(current_user, 'role_id', None) != 3 and user.id != current_user.id and user.company_id != current_user.company_id:
-        raise HTTPException(status_code=403, detail="Forbidden: Cannot view this user.")
     company = db.query(Company).filter(Company.id == user.company_id).first()
     role_obj = db.query(Role).filter(Role.id == user.role_id).first()
     user_response = UserResponse.from_orm(user)
@@ -117,7 +115,7 @@ def update_user(
     user_id: UUID,
     update: UserUpdate = Body(...),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_with_role(["admin", "super_admin"]))
+    current_user = Depends(get_current_user_with_role_id([1, 3]))  # Role 1 (admin) and Role 3 (super_admin)
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

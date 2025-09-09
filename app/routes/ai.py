@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
-from ..routes.auth import get_current_user_with_role
+from ..routes.auth import get_current_user_with_role, get_current_user_with_role_id
 import openai
 import os
 import re
@@ -316,7 +316,7 @@ def normalize_field_name(field_name):
 async def analyze_emr_file_for_ai(
     req: GenerateRequest,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     emr_type_id = req.emr_type_id
     emr = get_emr_type(db, emr_type_id)
@@ -507,7 +507,7 @@ HTML CONTENT: {html_content_for_gpt}"""
 async def analyze_emr_type(
     emr_type_id: str,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     # Check current status first
     emr_type = get_emr_type(db, emr_type_id)
@@ -735,7 +735,7 @@ HTML CONTENT: {html_content_for_gpt}"""
 async def save_selected_chunk(
     req: SaveSelectedChunkRequest,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Save the selected chunk data and individual fields to database"""
     emr_type_id = req.emr_type_id
@@ -937,7 +937,7 @@ async def save_selected_chunk(
 async def get_analyze_progress(
     emr_type_id: str,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Get current analysis progress"""
     try:
@@ -986,7 +986,7 @@ async def get_analyze_progress(
 async def delete_result(
     req: DeleteResultRequest,
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(["super_admin"]))
+    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     """Delete a specific result row from the database"""
     emr_type_id = req.emr_type_id
