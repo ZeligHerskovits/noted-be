@@ -242,13 +242,37 @@ def generate_session(
         manual_instructions = session.manual_instructions if session.manual_instructions else ""
         
         # Get emr_type to access session_instructions
-        from ..models import EmrType
+        from ..models import EmrType, UserEMRDocumentationPair
         emr_type = db.query(EmrType).filter(EmrType.id == session.emr_type_id).first()
+        default_duc_id = emr_type.documentation_method_id if emr_type else None
+
+        # Check if user has customized documentation method for this EMR type
+        user_emr_pair = db.query(UserEMRDocumentationPair).filter(
+            UserEMRDocumentationPair.user_id == current_user.id,
+            UserEMRDocumentationPair.emr_type_id == session.emr_type_id
+        ).first()
         
-        # Get the 3 separate instruction fields from EMR type
-        methods_instructions = emr_type.methods_instructions if emr_type and emr_type.methods_instructions else ""
-        progress_instructions = emr_type.progress_towards_goal_instructions if emr_type and emr_type.progress_towards_goal_instructions else ""
-        recommended_changes_instructions = emr_type.recommended_changes_instructions if emr_type and emr_type.recommended_changes_instructions else ""
+        if user_emr_pair:
+            # User has customized this EMR type - use their chosen documentation method
+            duc_id = user_emr_pair.documentation_method_id
+            # Find ANY EMR type that uses this documentation method to get the instructions
+            emr_type_with_duc = db.query(EmrType).filter(EmrType.documentation_method_id == duc_id).first()
+            if emr_type_with_duc:
+                methods_instructions = emr_type_with_duc.methods_instructions if emr_type_with_duc.methods_instructions else ""
+                progress_instructions = emr_type_with_duc.progress_towards_goal_instructions if emr_type_with_duc.progress_towards_goal_instructions else ""
+                recommended_changes_instructions = emr_type_with_duc.recommended_changes_instructions if emr_type_with_duc.recommended_changes_instructions else ""
+            else:
+                # Fallback to original EMR type if no EMR type found with this duc
+                duc_id = default_duc_id
+                methods_instructions = emr_type.methods_instructions if emr_type and emr_type.methods_instructions else ""
+                progress_instructions = emr_type.progress_towards_goal_instructions if emr_type and emr_type.progress_towards_goal_instructions else ""
+                recommended_changes_instructions = emr_type.recommended_changes_instructions if emr_type and emr_type.recommended_changes_instructions else ""
+        else:
+            # User hasn't customized this EMR type - use default documentation method
+            duc_id = default_duc_id
+            methods_instructions = emr_type.methods_instructions if emr_type and emr_type.methods_instructions else ""
+            progress_instructions = emr_type.progress_towards_goal_instructions if emr_type and emr_type.progress_towards_goal_instructions else ""
+            recommended_changes_instructions = emr_type.recommended_changes_instructions if emr_type and emr_type.recommended_changes_instructions else ""
         
         # Build combined instructions
         combined_instructions = []

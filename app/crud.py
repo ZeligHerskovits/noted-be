@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserDocumentationMethod, UserEmrType
+from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserEMRDocumentationPair
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -1152,39 +1152,99 @@ def delete_documentation_method(db: Session, documentation_method_id: UUID):
     return True
 
 # User Update with New Fields
-def update_user_with_relations(db: Session, user_id: UUID, **update_data):
+def get_user_emr_documentation_pairs(db: Session, user_id: UUID):
+    """Get user's EMR documentation pairs with names"""
+    pairs = db.query(UserEMRDocumentationPair).filter(UserEMRDocumentationPair.user_id == user_id).all()
+    result = []
+    for pair in pairs:
+        emr_type = db.query(EmrType).filter(EmrType.id == pair.emr_type_id).first()
+        doc_method = db.query(DocumentationMethod).filter(DocumentationMethod.id == pair.documentation_method_id).first()
+        result.append({
+            'id': pair.id,
+            'emr_type_id': pair.emr_type_id,
+            'emr_type_name': emr_type.name if emr_type else None,
+            'documentation_method_id': pair.documentation_method_id,
+            'documentation_method_name': doc_method.name if doc_method else None,
+            'created_at': pair.created_at
+        })
+    return result
+
+def update_user_emr_documentation_pairs(db: Session, user_id: UUID, pairs_data: List[dict]):
+    """Update user's EMR documentation pairs"""
+    # Delete existing pairs
+    db.query(UserEMRDocumentationPair).filter(UserEMRDocumentationPair.user_id == user_id).delete()
+    db.flush()
+    
+    # Add new pairs
+    if pairs_data:
+        for pair_data in pairs_data:
+            pair = UserEMRDocumentationPair(
+                user_id=user_id,
+                emr_type_id=pair_data['emr_type_id'],
+                documentation_method_id=pair_data['documentation_method_id']
+            )
+            db.add(pair)
+    
+    db.commit()
+
+def update_company_emr_documentation_pairs(db: Session, company_id: UUID, pairs_data: List[dict]):
+    """Update EMR documentation pairs for ALL users in a company"""
+    # Get all users in the company
+    company_users = db.query(User).filter(User.company_id == company_id).all()
+    
+    for user in company_users:
+        # Delete existing pairs for this user
+        db.query(UserEMRDocumentationPair).filter(UserEMRDocumentationPair.user_id == user.id).delete()
+        db.flush()
+        
+        # Add new pairs for this user
+        if pairs_data:
+            for pair_data in pairs_data:
+                pair = UserEMRDocumentationPair(
+                    user_id=user.id,
+                    emr_type_id=pair_data['emr_type_id'],
+                    documentation_method_id=pair_data['documentation_method_id']
+                )
+                db.add(pair)
+    
+    db.commit()
+    return len(company_users)  # Return number of users updated
+
+def update_user_with_relations(db: Session, user_id: UUID, current_user_role: int = None, **update_data):
     """Update user and handle junction table relationships"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        return None
+        return None, {}
     
     # Update basic user fields
     for field, value in update_data.items():
-        if field in ['emr_types', 'documentation_methods', 'coping_skills', 'clinical_specialties', 'type_writing']:
+        if field in ['coping_skills', 'clinical_specialties', 'type_writing', 'emr_type_documentation_pairs']:
             continue  # Handle these separately
         if hasattr(user, field) and value is not None:
             setattr(user, field, value)
     
-    # Handle junction table updates
-    if 'emr_types' in update_data:
-        # Delete existing relationships
-        db.query(UserEmrType).filter(UserEmrType.user_id == user_id).delete()
-        db.flush()  # Ensure delete is committed before insert
-        # Add new relationships
-        if update_data['emr_types']:
-            for emr_type_id in update_data['emr_types']:
-                junction = UserEmrType(user_id=user_id, emr_type_id=emr_type_id)
-                db.add(junction)
+    # Handle new pairs table
+    update_info = {}
+    if 'emr_type_documentation_pairs' in update_data:
+        # Check if current user is admin (role 1) or super admin (role 3)
+        if current_user_role in [1, 3]:
+            # Update ALL users in the same company
+            users_updated = update_company_emr_documentation_pairs(db, user.company_id, update_data['emr_type_documentation_pairs'])
+            update_info = {
+                'company_wide_update': True,
+                'users_updated': users_updated,
+                'message': f'EMR documentation pairs updated for {users_updated} users in your company'
+            }
+        else:
+            # Update only the specific user
+            update_user_emr_documentation_pairs(db, user_id, update_data['emr_type_documentation_pairs'])
+            update_info = {
+                'company_wide_update': False,
+                'users_updated': 1,
+                'message': 'EMR documentation pairs updated for this user only'
+            }
     
-    if 'documentation_methods' in update_data:
-        # Delete existing relationships
-        db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user_id).delete()
-        db.flush()  # Ensure delete is committed before insert
-        # Add new relationships
-        if update_data['documentation_methods']:
-            for doc_method_id in update_data['documentation_methods']:
-                junction = UserDocumentationMethod(user_id=user_id, documentation_method_id=doc_method_id)
-                db.add(junction)
+    # Old junction table logic removed - now using pairs table only
     
     if 'coping_skills' in update_data:
         # Delete existing relationships
@@ -1212,4 +1272,4 @@ def update_user_with_relations(db: Session, user_id: UUID, **update_data):
     
     db.commit()
     db.refresh(user)
-    return user 
+    return user, update_info 

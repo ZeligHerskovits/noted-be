@@ -182,18 +182,14 @@ class UserClinicalSpecialty(Base):
     clinical_specialty_id = Column(UUID(as_uuid=True), ForeignKey("clinical_specialties.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
 
-class UserDocumentationMethod(Base):
-    __tablename__ = "user_documentation_methods"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    documentation_method_id = Column(UUID(as_uuid=True), ForeignKey("documentation_methods.id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
+# Old junction tables removed - now using UserEMRDocumentationPair
 
-class UserEmrType(Base):
-    __tablename__ = "user_emr_types"
+class UserEMRDocumentationPair(Base):
+    __tablename__ = "user_emr_documentation_pairs"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime, server_default=func.now()) 
+    documentation_method_id = Column(UUID(as_uuid=True), ForeignKey("documentation_methods.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 

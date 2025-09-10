@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Security, Response, Cooki
 from sqlalchemy.orm import Session
 from ..db import SessionLocal
 from ..schemas import RegisterRequest, LoginRequest, TokenResponse, OTPVerifyRequest, ResetPasswordRequest, ForgotPasswordRequest, UserResponse, UserUpdate, CompanyResponse
-from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash, set_email_verification_token, verify_email_token, update_user_with_relations
+from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash, set_email_verification_token, verify_email_token, update_user_with_relations, get_user_emr_documentation_pairs
 import datetime
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
@@ -345,10 +345,13 @@ def get_me(request: Request, db: Session = Depends(get_db), current_user = Depen
     user_dict['session_instructions'] = user.session_instructions
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     
-    # Add junction table data
-    from ..models import UserEmrType, UserDocumentationMethod, UserCopingSkill, UserClinicalSpecialty
-    user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == user.id).all()]
-    user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user.id).all()]
+    # Add new pairs data
+    user_dict['emr_type_documentation_pairs'] = get_user_emr_documentation_pairs(db, user.id)
+    
+    # Add junction table data (keep for backward compatibility - return empty arrays)
+    from ..models import UserCopingSkill, UserClinicalSpecialty
+    user_dict['emr_types'] = []  # Return empty array for backward compatibility
+    user_dict['documentation_methods'] = []  # Return empty array for backward compatibility
     user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user.id).all()]
     user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user.id).all()]
     # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
@@ -379,7 +382,9 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
             raise HTTPException(status_code=400, detail="Email already in use.")
     
     # Use the new update function that handles junction tables
-    updated_user = update_user_with_relations(db, current_user.id, **update.dict(exclude_unset=True))
+    # Pass current user's role to determine if company-wide update should be applied
+    current_user_role = getattr(current_user, 'role_id', None)
+    updated_user, update_info = update_user_with_relations(db, current_user.id, current_user_role=current_user_role, **update.dict(exclude_unset=True))
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -394,10 +399,13 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
     user_dict['session_instructions'] = updated_user.session_instructions
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     
-    # Add junction table data
-    from ..models import UserEmrType, UserDocumentationMethod, UserCopingSkill, UserClinicalSpecialty
-    user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == current_user.id).all()]
-    user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == current_user.id).all()]
+    # Add new pairs data
+    user_dict['emr_type_documentation_pairs'] = get_user_emr_documentation_pairs(db, current_user.id)
+    
+    # Add junction table data (keep for backward compatibility - return empty arrays)
+    from ..models import UserCopingSkill, UserClinicalSpecialty
+    user_dict['emr_types'] = []  # Return empty array for backward compatibility
+    user_dict['documentation_methods'] = []  # Return empty array for backward compatibility
     user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == current_user.id).all()]
     user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == current_user.id).all()]
     # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
@@ -413,6 +421,10 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current_user = 
                 user_dict['type_writing'] = []
     else:
         user_dict['type_writing'] = []
+    
+    # Add update info if available
+    if update_info:
+        user_dict.update(update_info)
     
     return user_dict
 

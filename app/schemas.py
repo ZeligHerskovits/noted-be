@@ -35,6 +35,17 @@ class ResetPasswordRequest(BaseModel):
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
+class EMRDocumentationPairResponse(BaseModel):
+    id: UUID
+    emr_type_id: UUID
+    emr_type_name: str
+    documentation_method_id: UUID
+    documentation_method_name: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
 class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
@@ -49,14 +60,26 @@ class UserResponse(BaseModel):
     user_type: Optional[str] = None
     session_instructions: Optional[str] = None
     # New fields
-    emr_types: Optional[List[UUID]] = None
-    documentation_methods: Optional[List[UUID]] = None
+    emr_type_documentation_pairs: Optional[List[EMRDocumentationPairResponse]] = None
+    # Keep old fields for backward compatibility during transition (return empty arrays)
+    emr_types: Optional[List[UUID]] = []
+    documentation_methods: Optional[List[UUID]] = []
     coping_skills: Optional[List[UUID]] = None
     clinical_specialties: Optional[List[UUID]] = None
     type_writing: Optional[List[str]] = None
     created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
+
+class EMRDocumentationPairUpdate(BaseModel):
+    emr_type_id: UUID
+    documentation_method_id: UUID
+
+class UserUpdateResponse(BaseModel):
+    user: UserResponse
+    company_wide_update: Optional[bool] = False
+    users_updated: Optional[int] = None
+    message: Optional[str] = None
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -66,6 +89,8 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     session_instructions: Optional[str] = None  # FE sends 'session_instructions', we save as 'session_instructions'
     # New fields
+    emr_type_documentation_pairs: Optional[List[EMRDocumentationPairUpdate]] = None
+    # Keep old fields for backward compatibility during transition
     emr_types: Optional[List[UUID]] = None
     documentation_methods: Optional[List[UUID]] = None
     coping_skills: Optional[List[UUID]] = None

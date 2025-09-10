@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..db import SessionLocal, DATABASE_URL
 from ..schemas import UserResponse, CompanyCreate, CompanyResponse, UserUpdate
-from ..crud import get_all_users_with_roles, create_company, update_user_with_relations
+from ..crud import get_all_users_with_roles, create_company, update_user_with_relations, get_user_emr_documentation_pairs
 from app.routes.auth import get_current_user_with_role, get_current_user_with_role_id
 from ..models import Company, User, Role
 from uuid import UUID
@@ -88,10 +88,13 @@ def get_user_profile(user_id: UUID, db: Session = Depends(get_db), current_user 
     user_dict['is_active'] = user.is_active
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     
-    # Add junction table data
-    from ..models import UserEmrType, UserDocumentationMethod, UserCopingSkill, UserClinicalSpecialty
-    user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == user_id).all()]
-    user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user_id).all()]
+    # Add new pairs data
+    user_dict['emr_type_documentation_pairs'] = get_user_emr_documentation_pairs(db, user_id)
+    
+    # Add junction table data (keep for backward compatibility - return empty arrays)
+    from ..models import UserCopingSkill, UserClinicalSpecialty
+    user_dict['emr_types'] = []  # Return empty array for backward compatibility
+    user_dict['documentation_methods'] = []  # Return empty array for backward compatibility
     user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user_id).all()]
     user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user_id).all()]
     # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
@@ -130,7 +133,9 @@ def update_user(
             raise HTTPException(status_code=400, detail="Email already in use.")
     
     # Use the new update function that handles junction tables
-    updated_user = update_user_with_relations(db, user_id, **update.dict(exclude_unset=True))
+    # Pass current user's role to determine if company-wide update should be applied
+    current_user_role = getattr(current_user, 'role_id', None)
+    updated_user, update_info = update_user_with_relations(db, user_id, current_user_role=current_user_role, **update.dict(exclude_unset=True))
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -146,9 +151,12 @@ def update_user(
     user_dict['is_active'] = updated_user.is_active
     user_dict['company'] = CompanyResponse.from_orm(company).dict() if company else None
     
-    # Add junction table data
-    user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == user_id).all()]
-    user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user_id).all()]
+    # Add new pairs data
+    user_dict['emr_type_documentation_pairs'] = get_user_emr_documentation_pairs(db, user_id)
+    
+    # Add junction table data (keep for backward compatibility - return empty arrays)
+    user_dict['emr_types'] = []  # Return empty array for backward compatibility
+    user_dict['documentation_methods'] = []  # Return empty array for backward compatibility
     user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user_id).all()]
     user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user_id).all()]
     # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
@@ -164,5 +172,9 @@ def update_user(
                 user_dict['type_writing'] = []
     else:
         user_dict['type_writing'] = []
+    
+    # Add update info if available
+    if update_info:
+        user_dict.update(update_info)
     
     return user_dict
