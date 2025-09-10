@@ -630,6 +630,13 @@ async def analyze_emr_type(
 
         # Combine all instructions into one big instruction
         combined_instructions = "\n".join(custom_instructions)
+        
+        # Check if there are any fields to analyze
+        if not custom_instructions or not combined_instructions.strip():
+            raise HTTPException(
+                status_code=400, 
+                detail="There are no more fields to analyze. All fields that needs to be analyzed is already analyzed"
+            )
         debug("=== DEBUG: Combined instructions: {} ===")
 
         # Create prompt template
@@ -650,7 +657,7 @@ CRITICAL FORMATTING RULES:
 - Do NOT add any formatting characters like ```json, ```, or other code block markers
 - Do NOT include any fields that don't exist in the original instructions
 
-IMPORTANT: Always use the exact FieldName provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML, never ever return another FieldName not provided in the instructions
+IMPORTANT: Always use the exact FieldName provided in the instructions as the keys in your response, even if the value is found under a similar or synonymous label in the HTML, never ever return another FieldName not provided in the instructions like I see once you give in response for key just a random key like 'Fieldname' or 'Not Found (label' etc. which that is not a real key name that was asked in FieldName list to be analyzed at all so pls never ever do that again.and also I see once you give out in response Servicefacilityaddress instead of real key which was Service Facility Address so pls never ever do that again by that field and by any other field names I provided as well and only only use the exact FieldName provided in the instructions thanks
 
 IMPORTANT: For each field you extract, also include the actual label from the HTML that you used to find the value. For example, if you asked for "Client" but found "Client Name" in the HTML, include "Client Name" as the label. If you asked for "Appt Date" but found "Appointment Date" in the HTML, include "Appointment Date" as the label.
 

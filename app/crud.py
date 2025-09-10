@@ -338,17 +338,22 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
     if session_type is not None:
         emr_type.session_type = session_type
     if documentation_method_id is not None:
-        emr_type.documentation_method_id = documentation_method_id
-        
-        # If documentation method changed, update session instructions from the new method
-        doc_method = get_documentation_method(db, documentation_method_id)
-        if doc_method and doc_method.session_instructions:
-            # Parse the new documentation method's session instructions
-            parsed_sections = parse_s3_instructions_into_sections(doc_method.session_instructions)
-            emr_type.session_instructions = doc_method.session_instructions
-            emr_type.methods_instructions = parsed_sections['methods_instructions']
-            emr_type.progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
-            emr_type.recommended_changes_instructions = parsed_sections['recommended_changes_instructions']
+        # Check if documentation method actually changed from the previous value
+        if emr_type.documentation_method_id != documentation_method_id:
+            emr_type.documentation_method_id = documentation_method_id
+            
+            # Only update session instructions if documentation method changed
+            doc_method = get_documentation_method(db, documentation_method_id)
+            if doc_method and doc_method.session_instructions:
+                # Parse the new documentation method's session instructions
+                parsed_sections = parse_s3_instructions_into_sections(doc_method.session_instructions)
+                emr_type.session_instructions = doc_method.session_instructions
+                emr_type.methods_instructions = parsed_sections['methods_instructions']
+                emr_type.progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
+                emr_type.recommended_changes_instructions = parsed_sections['recommended_changes_instructions']
+        else:
+            # Documentation method didn't change, just update the field without touching instructions
+            emr_type.documentation_method_id = documentation_method_id
     if files is not None:
         emr_type.files = files
     if instructions is not None:

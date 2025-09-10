@@ -92,7 +92,7 @@ def with_signed_urls(files):
 async def create_emr_type_with_files(
     name: str = Form(...),
     session_type: Optional[str] = Form(None),
-    documentation_method_id: Optional[str] = Form(None),
+    documentation_method_id: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
@@ -123,17 +123,18 @@ async def create_emr_type_with_files(
     # Save the generated JSON instructions to the EMR type in the instructions field
     import json
     json_instructions_string = json.dumps(json_instructions)
-    # Convert documentation_method_id to UUID if provided and validate it exists
-    doc_method_uuid = None
-    if documentation_method_id:
-        try:
-            doc_method_uuid = UUID(documentation_method_id)
-            # Validate that the documentation method exists
-            from ..crud import get_documentation_method
-            if not get_documentation_method(db, doc_method_uuid):
-                raise HTTPException(status_code=400, detail="Documentation method not found")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
+    # Convert documentation_method_id to UUID and validate it exists
+    if not documentation_method_id or documentation_method_id.strip() == "":
+        raise HTTPException(status_code=400, detail="Documentation method is required")
+    
+    try:
+        doc_method_uuid = UUID(documentation_method_id)
+        # Validate that the documentation method exists
+        from ..crud import get_documentation_method
+        if not get_documentation_method(db, doc_method_uuid):
+            raise HTTPException(status_code=400, detail="Documentation method not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
     
     emr_type = create_emr_type(
         db=db,
@@ -388,7 +389,7 @@ async def update_emr_type_with_files(
     emr_type_id: UUID,
     name: Optional[str] = Form(None),
     session_type: Optional[str] = Form(None),
-    documentation_method_id: Optional[str] = Form(None),
+    documentation_method_id: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
     instructions: Optional[str] = Form(None),
     clear_files: Optional[bool] = Form(False),
@@ -405,16 +406,18 @@ async def update_emr_type_with_files(
         update_data['name'] = name
     if session_type is not None:
         update_data['session_type'] = session_type
-    if documentation_method_id is not None:
-        try:
-            doc_method_uuid = UUID(documentation_method_id)
-            # Validate that the documentation method exists
-            from ..crud import get_documentation_method
-            if not get_documentation_method(db, doc_method_uuid):
-                raise HTTPException(status_code=400, detail="Documentation method not found")
-            update_data['documentation_method_id'] = doc_method_uuid
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
+    if not documentation_method_id or documentation_method_id.strip() == "":
+        raise HTTPException(status_code=400, detail="Documentation method is required")
+    
+    try:
+        doc_method_uuid = UUID(documentation_method_id)
+        # Validate that the documentation method exists
+        from ..crud import get_documentation_method
+        if not get_documentation_method(db, doc_method_uuid):
+            raise HTTPException(status_code=400, detail="Documentation method not found")
+        update_data['documentation_method_id'] = doc_method_uuid
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
     if instructions is not None:
         update_data['instructions'] = instructions
 
