@@ -293,21 +293,20 @@ async def process_chunks_async(chunks: list, prompt_template: str, emr_type_id: 
 
 def normalize_field_name(field_name):
     """Normalize field name for consistency"""
+    import re
     # Remove leading dashes and spaces
     cleaned = field_name.lstrip('- ').strip()
     # Normalize multiple spaces to single space
     cleaned = ' '.join(cleaned.split())
-    # Remove any remaining dashes and normalize
-    cleaned = cleaned.replace('-', ' ').strip()
-    # Convert camelCase to spaces (e.g., "DeliveredOff" -> "Delivered Off")
-    import re
+    # Replace dashes and underscores with spaces
+    cleaned = re.sub(r'[-_]', ' ', cleaned)
+    # Convert camelCase to spaces
     cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
     # Normalize multiple spaces again
     cleaned = ' '.join(cleaned.split())
-    # Convert to lowercase for case-insensitive comparison
+    # Convert to lowercase
     cleaned = cleaned.lower()
     return cleaned
-
 
 
 
@@ -747,128 +746,130 @@ async def save_selected_chunk(
     # Track unique values for each field
     field_values = {}
 
-    # Process each chunk response
-    for chunk_data in selected_chunks:
-        selected_chunk_response = chunk_data.selected_chunk_response
-        chunk_index = chunk_data.selected_chunk_index
-        selected_chunk_label = chunk_data.selected_chunk_label or ''
+    # Process each chunk response only if selected_chunks is not empty
+    if selected_chunks:
+        for chunk_data in selected_chunks:
+            selected_chunk_response = chunk_data.selected_chunk_response
+            chunk_index = chunk_data.selected_chunk_index
+            selected_chunk_label = chunk_data.selected_chunk_label or ''
 
-        debug("=== DEBUG: Processing chunk {} with label: {} ===")
+            debug("=== DEBUG: Processing chunk {} with label: {} ===")
 
-        # Parse the selected chunk response
-        lines = selected_chunk_response.strip().split('\n')
-        for line in lines:
-            if ':' in line:
-                key, value = line.split(':', 1)
-                key = key.strip()
-                value = value.strip()
+            # Parse the selected chunk response
+            if selected_chunk_response and selected_chunk_response.strip():
+                lines = selected_chunk_response.strip().split('\n')
+                for line in lines:
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        key = key.strip()
+                        value = value.strip()
 
-                # Extract label from value if present
-                extracted_label = ""
-                clean_value = value
-
-                # Check if value contains (label: ...) pattern
-                if '(label:' in value:
-                    try:
-                        # Find the label part
-                        label_start = value.find('(label:')
-                        label_end = value.find(')', label_start)
-
-                        if label_start != -1 and label_end != -1:
-                            # Extract the label content
-                            label_content = value[label_start + 7:label_end].strip()  # 7 = len('(label:')
-
-                            # Remove the entire (label: ...) part from value
-                            clean_value = value[:label_start].strip()
-
-                            # Always use label if it has content, regardless of value status
-                            if label_content:
-                                extracted_label = label_content
-                            else:
-                                # Empty label, keep label empty
-                                extracted_label = ""
-                        else:
-                            # Invalid format, keep original value
-                            clean_value = value
-                    except:
-                        # Any error, keep original value
+                        # Extract label from value if present
+                        extracted_label = ""
                         clean_value = value
-                else:
-                    # No label found, keep original value
-                    clean_value = value
 
-                # Initialize field if not exists
-                if key not in field_values:
-                    field_values[key] = {'values': set(), 'label': selected_chunk_label}
+                        # Check if value contains (label: ...) pattern
+                        if '(label:' in value:
+                            try:
+                                # Find the label part
+                                label_start = value.find('(label:')
+                                label_end = value.find(')', label_start)
 
-                # Add clean value to field (set automatically handles duplicates)
-                field_values[key]['values'].add(clean_value)
+                                if label_start != -1 and label_end != -1:
+                                    # Extract the label content
+                                    label_content = value[label_start + 7:label_end].strip()  # 7 = len('(label:')
 
-                # Update label if we extracted one
-                if extracted_label:
-                    field_values[key]['label'] = extracted_label
+                                    # Remove the entire (label: ...) part from value
+                                    clean_value = value[:label_start].strip()
 
-        debug("=== DEBUG: Parsed results from chunk {}: {} ===")
+                                    # Always use label if it has content, regardless of value status
+                                    if label_content:
+                                        extracted_label = label_content
+                                    else:
+                                        # Empty label, keep label empty
+                                        extracted_label = ""
+                                else:
+                                    # Invalid format, keep original value
+                                    clean_value = value
+                            except:
+                                # Any error, keep original value
+                                clean_value = value
+                        else:
+                            # No label found, keep original value
+                            clean_value = value
 
-    # Process individual field selections
-    for field_data in selected_fields:
-        field_name = field_data.field_name
-        field_value = field_data.field_value
-        chunk_index = field_data.chunk_index
-        chunk_label = field_data.chunk_label or ''
-        
-        debug("=== DEBUG: Processing individual field '{}' with value '{}' from chunk {} ===", field_name, field_value, chunk_index)
-        
-        # Extract label from value if present (same logic as chunks)
-        extracted_label = ""
-        clean_value = field_value
-        
-        # Check if value contains (label: ...) pattern
-        if '(label:' in field_value:
-            try:
-                # Find the label part
-                label_start = field_value.find('(label:')
-                label_end = field_value.find(')', label_start)
-                
-                if label_start != -1 and label_end != -1:
-                    # Extract the label content
-                    label_content = field_value[label_start + 7:label_end].strip()  # 7 = len('(label:')
-                    
-                    # Remove the entire (label: ...) part from value
-                    clean_value = field_value[:label_start].strip()
-                    
-                    # Use label if it has content
-                    if label_content:
-                        extracted_label = label_content
-                else:
-                    # Invalid format, keep original value
-                    clean_value = field_value
-            except:
-                # Any error, keep original value
-                clean_value = field_value
-        else:
-            # No label found, keep original value
+                        # Initialize field if not exists
+                        if key not in field_values:
+                            field_values[key] = {'values': set(), 'label': selected_chunk_label}
+
+                        # Add clean value to field (set automatically handles duplicates)
+                        field_values[key]['values'].add(clean_value)
+
+                        # Update label if we extracted one
+                        if extracted_label:
+                            field_values[key]['label'] = extracted_label
+
+                debug("=== DEBUG: Parsed results from chunk {}: {} ===")
+
+    # Process individual field selections only if selected_fields is not empty
+    if selected_fields:
+        for field_data in selected_fields:
+            field_name = field_data.field_name
+            field_value = field_data.field_value
+            chunk_index = field_data.chunk_index
+            chunk_label = field_data.chunk_label or ''
+            debug("=== DEBUG: Processing individual field '{}' with value '{}' from chunk {} ===", field_name, field_value, chunk_index)
+            
+            # Extract label from value if present (same logic as chunks)
+            extracted_label = ""
             clean_value = field_value
-        
-        # Initialize field if not exists
-        if field_name not in field_values:
-            field_values[field_name] = {'values': set(), 'label': chunk_label}
-        
-        # Add clean value to field (set automatically handles duplicates)
-        field_values[field_name]['values'].add(clean_value)
-        
-        # Update label if we extracted one
-        if extracted_label:
-            field_values[field_name]['label'] = extracted_label
-        
-        debug("=== DEBUG: Added individual field '{}': '{}' (label: '{}') ===", field_name, clean_value, extracted_label or chunk_label)
+            
+            # Check if value contains (label: ...) pattern
+            if '(label:' in field_value:
+                try:
+                    # Find the label part
+                    label_start = field_value.find('(label:')
+                    label_end = field_value.find(')', label_start)
+                    
+                    if label_start != -1 and label_end != -1:
+                        # Extract the label content
+                        label_content = field_value[label_start + 7:label_end].strip()  # 7 = len('(label:')
+                        
+                        # Remove the entire (label: ...) part from value
+                        clean_value = field_value[:label_start].strip()
+                        
+                        # Use label if it has content
+                        if label_content:
+                            extracted_label = label_content
+                    else:
+                        # Invalid format, keep original value
+                        clean_value = field_value
+                except:
+                    # Any error, keep original value
+                    clean_value = field_value
+            else:
+                # No label found, keep original value
+                clean_value = field_value
+            
+            # Initialize field if not exists
+            if field_name not in field_values:
+                field_values[field_name] = {'values': set(), 'label': chunk_label}
+            
+            # Add clean value to field (set automatically handles duplicates)
+            field_values[field_name]['values'].add(clean_value)
+            
+            # Update label if we extracted one
+            if extracted_label:
+                field_values[field_name]['label'] = extracted_label
+            
+            debug("=== DEBUG: Added individual field '{}': '{}' (label: '{}') ===", field_name, clean_value, extracted_label or chunk_label)
 
     # Convert sets to lists and save each unique value as separate row
     for field, field_data in field_values.items():
         values_list = list(field_data['values'])  # Convert set to list (sets already handle duplicates)
         label = field_data['label']
 
-        clean_key = normalize_field_name(key)
+        clean_key = normalize_field_name(field)
         # Check if this field already exists in the database
         existing_result = db.query(EMRTypeResult).filter(
             EMRTypeResult.emr_type_id == emr_type_id,
@@ -903,7 +904,7 @@ async def save_selected_chunk(
                 create_emr_type_result(
                     db=db,
                     emr_type_id=emr_type_id,
-                    key=field,
+                    key=clean_key,
                     value=best_value,
                     status='found' if 'not found' not in best_value.lower() else 'not found',
                     label=best_label
