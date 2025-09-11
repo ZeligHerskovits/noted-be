@@ -159,9 +159,6 @@ def save_session_instructions(
     emr = get_emr_type(db, emr_type_id)
     if not emr:
         raise HTTPException(status_code=404, detail="EMR type not found")
-
-    # Parse the session instructions into the three sections if not provided
-    from ..crud import parse_instructions_into_sections
     
     if req.methods_instructions and req.progress_towards_goal_instructions and req.recommended_changes_instructions:
         # Use the provided individual fields and clean them
@@ -169,21 +166,18 @@ def save_session_instructions(
         progress_towards_goal_instructions = re.sub(r'\s+', ' ', html.unescape(req.progress_towards_goal_instructions)).strip()
         recommended_changes_instructions = re.sub(r'\s+', ' ', html.unescape(req.recommended_changes_instructions)).strip()
     else:
-        # Parse from session_instructions if individual fields not provided
-        parsed_sections = parse_instructions_into_sections(req.session_instructions)
-        methods_instructions = parsed_sections['methods_instructions']
-        progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
-        recommended_changes_instructions = parsed_sections['recommended_changes_instructions']
+       # Its will prob never go into this cause even one section box is empty has it a header which is get ssend to be along with that section box which means thta a section box will never be empty
+       raise HTTPException(status_code=400, detail="All 3 sections must be filled out")
 
     # Update the EMR type with all fields
     update_emr_type(
         db, 
         emr_type_id, 
-        session_instructions=req.session_instructions,
         methods_instructions=methods_instructions,
         progress_towards_goal_instructions=progress_towards_goal_instructions,
         recommended_changes_instructions=recommended_changes_instructions
     )
+
 
     return {"message": "session_instructions saved successfully", "emr_type_id": emr_type_id}
 

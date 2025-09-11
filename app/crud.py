@@ -24,41 +24,11 @@ def get_password_hash(password: str) -> str:
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
-def create_user(db: Session, email: str, password: str, full_name: str, company_id: UUID, mobile_phone: str = None, user_type: str = None, 
-                emr_types: List[UUID] = None, documentation_methods: List[UUID] = None, coping_skills: List[UUID] = None, 
-                clinical_specialties: List[UUID] = None, type_writing: List[str] = None):
+def create_user(db: Session, email: str, password: str, full_name: str, company_id: UUID, mobile_phone: str = None, user_type: str = None):
     hashed_password = get_password_hash(password)
     user = User(email=email, hashed_password=hashed_password, full_name=full_name, role_id=1, company_id=company_id, 
                 mobile_phone=mobile_phone, is_active=False, user_type=user_type)
     db.add(user)
-    db.commit()
-    db.refresh(user)
-    
-    # Handle junction table relationships
-    if emr_types:
-        for emr_type_id in emr_types:
-            junction = UserEmrType(user_id=user.id, emr_type_id=emr_type_id)
-            db.add(junction)
-    
-    if documentation_methods:
-        for doc_method_id in documentation_methods:
-            junction = UserDocumentationMethod(user_id=user.id, documentation_method_id=doc_method_id)
-            db.add(junction)
-    
-    if coping_skills:
-        for coping_skill_id in coping_skills:
-            junction = UserCopingSkill(user_id=user.id, coping_skill_id=coping_skill_id)
-            db.add(junction)
-    
-    if clinical_specialties:
-        for clinical_specialty_id in clinical_specialties:
-            junction = UserClinicalSpecialty(user_id=user.id, clinical_specialty_id=clinical_specialty_id)
-            db.add(junction)
-    
-    if type_writing:
-        # SQLAlchemy handles PostgreSQL array conversion automatically
-        user.type_writing = type_writing
-    
     db.commit()
     db.refresh(user)
     return user
@@ -128,8 +98,7 @@ def get_all_users_with_roles(db: Session):
         user_dict['is_active'] = user.is_active
         
         # Get related data from junction tables
-        user_dict['emr_types'] = [j.emr_type_id for j in db.query(UserEmrType).filter(UserEmrType.user_id == user.id).all()]
-        user_dict['documentation_methods'] = [j.documentation_method_id for j in db.query(UserDocumentationMethod).filter(UserDocumentationMethod.user_id == user.id).all()]
+        user_dict['emr_type_documentation_pairs'] = get_user_emr_documentation_pairs(db, user.id)
         user_dict['coping_skills'] = [j.coping_skill_id for j in db.query(UserCopingSkill).filter(UserCopingSkill.user_id == user.id).all()]
         user_dict['clinical_specialties'] = [j.clinical_specialty_id for j in db.query(UserClinicalSpecialty).filter(UserClinicalSpecialty.user_id == user.id).all()]
         # Handle type_writing - SQLAlchemy already converts PostgreSQL array to Python list
@@ -276,7 +245,6 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
                    instructions: Optional[str] = None, response: Optional[str] = None):
     
     # Get session instructions from the selected documentation method
-    session_instructions = None
     parsed_sections = {
         'methods_instructions': '',
         'progress_towards_goal_instructions': '',
@@ -287,21 +255,19 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         # Get the documentation method and its session instructions
         doc_method = get_documentation_method(db, documentation_method_id)
         if doc_method and doc_method.session_instructions:
-            session_instructions = doc_method.session_instructions
             # Parse the documentation method's session instructions into the three sections
-            parsed_sections = parse_instructions_into_sections(session_instructions)
+            parsed_sections = parse_instructions_into_sections(doc_method.session_instructions)
+        else:
+            raise Exception(f"You select a documentation method with no instructions")   
     else:
-        # Fallback to S3 if no documentation method is selected
-        session_instructions = get_default_session_instructions_from_s3()
-        parsed_sections = parse_instructions_into_sections(session_instructions)
-    
+        raise Exception(f"You didnt select a valid documentation method")   
+       
     emr_type = EmrType(
         name=name,
         session_type=session_type,
         documentation_method_id=documentation_method_id,
         files=files,
         instructions=instructions,
-        session_instructions=session_instructions,  # Use documentation method's session instructions
         response=response,
         status='draft',  # Set default status to draft
         methods_instructions=parsed_sections['methods_instructions'],
@@ -322,7 +288,7 @@ def get_all_emr_types(db: Session):
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_method_id: Optional[UUID] = None,
                    files: Optional[List[dict]] = None, instructions: Optional[str] = None,
-                   response: Optional[str] = None, session_instructions: Optional[str] = None, status: Optional[str] = None,
+                   response: Optional[str] = None, status: Optional[str] = None,
                    previous_status: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None,
                    methods_instructions: Optional[str] = None, progress_towards_goal_instructions: Optional[str] = None,
@@ -347,19 +313,16 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
             if doc_method and doc_method.session_instructions:
                 # Parse the new documentation method's session instructions
                 parsed_sections = parse_instructions_into_sections(doc_method.session_instructions)
-                emr_type.session_instructions = doc_method.session_instructions
                 emr_type.methods_instructions = parsed_sections['methods_instructions']
                 emr_type.progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
                 emr_type.recommended_changes_instructions = parsed_sections['recommended_changes_instructions']
-        else:
-            # Documentation method didn't change, just update the field without touching instructions
-            emr_type.documentation_method_id = documentation_method_id
+            else:
+                raise Exception(f"You select a documentation method with no instructions")  
+
     if files is not None:
         emr_type.files = files
     if instructions is not None:
         emr_type.instructions = instructions
-    if session_instructions is not None:
-        emr_type.session_instructions = session_instructions
     if response is not None:
         emr_type.response = response
     if status is not None:

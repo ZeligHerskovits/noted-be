@@ -144,7 +144,7 @@ def update_user(
     role = db.query(Role).filter(Role.id == updated_user.role_id).first()
     
     # Get related data from junction tables
-    from ..models import UserEmrType, UserDocumentationMethod, UserCopingSkill, UserClinicalSpecialty
+    from ..models import UserCopingSkill, UserClinicalSpecialty
     user_dict = updated_user.__dict__.copy()
     user_dict['company_name'] = company.name if company else None
     user_dict['role_name'] = role.name if role else None

@@ -14,6 +14,7 @@ import requests
 import os
 from openai import OpenAI
 from ..crud import parse_instructions_into_sections, get_documentation_method, create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session, get_all_clients
+from ..models import EmrType, UserEMRDocumentationPair, DocumentationMethod
 from ..debug import debug
 
 sessions_router = APIRouter(prefix="/sessions", tags=["Sessions"])
@@ -47,6 +48,33 @@ def get_session_by_id(
         if client:
             session.client_id_name = f"{client.first_name} {client.last_name}"
 
+        # Get emr_type to access session_instructions
+        emr_type = db.query(EmrType).filter(EmrType.id == session.emr_type_id).first()
+        default_duc_id = emr_type.documentation_method_id if emr_type else None
+
+        # Check if user has customized documentation method for this EMR type
+        user_emr_pair = db.query(UserEMRDocumentationPair).filter(
+            UserEMRDocumentationPair.user_id == current_user.id,
+            UserEMRDocumentationPair.emr_type_id == session.emr_type_id
+        ).first()
+        
+        # Determine which documentation method to use
+        doc_method_id = None
+        is_default = True  # Track if using default documentation method
+        
+        if user_emr_pair and user_emr_pair.documentation_method_id != default_duc_id:
+            # User has customized this EMR type duc method and its not = to default duc method from that EMR type - use their chosen documentation method
+            duc = db.query(DocumentationMethod).filter(DocumentationMethod.id == user_emr_pair.documentation_method_id).first()
+            if duc:
+                doc_method = get_documentation_method(db, duc.id)
+                if doc_method and doc_method.session_instructions:
+                    doc_method_id = doc_method.id
+                    is_default = False  # Using user's custom choice, not default
+        else:
+            # No user customization, use EMR type default
+            doc_method_id = default_duc_id
+            is_default = True  # Using EMR type default
+
         # Convert session object to dict to include all dynamic fields
         session_dict = {}
         for attr in dir(session):
@@ -57,6 +85,10 @@ def get_session_by_id(
                     session_dict[attr] = str(value)
                 else:
                     session_dict[attr] = value
+        
+        # Add documentation method ID and default flag to the response
+        session_dict['documentation_method_id'] = str(doc_method_id) if doc_method_id else None
+        session_dict['is_default_documentation_method'] = is_default
         
         return session_dict
     except Exception as e:
@@ -254,7 +286,6 @@ def generate_session(
         
          # User has customized this EMR type duc method and its not = to defauld duc method from that EMR type - use their chosen documentation method
         if user_emr_pair and user_emr_pair.documentation_method_id != default_duc_id:
-            session_instructions = None
             parsed_sections = {
                 'methods_instructions': '',
                 'progress_towards_goal_instructions': '',
@@ -264,9 +295,8 @@ def generate_session(
             if duc:
                doc_method = get_documentation_method(db, duc.id)
             if doc_method and doc_method.session_instructions:
-                session_instructions = doc_method.session_instructions
                 # Parse the documentation method's session instructions into the three sections
-                parsed_sections = parse_instructions_into_sections(session_instructions)
+                parsed_sections = parse_instructions_into_sections(doc_method.session_instructions)
                 methods_instructions=parsed_sections['methods_instructions'],
                 progress_instructions=parsed_sections['progress_towards_goal_instructions'],
                 recommended_changes_instructions=parsed_sections['recommended_changes_instructions']
