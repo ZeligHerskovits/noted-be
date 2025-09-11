@@ -13,7 +13,7 @@ import json
 import requests
 import os
 from openai import OpenAI
-from ..crud import create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session, get_all_clients
+from ..crud import parse_instructions_into_sections, get_documentation_method, create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session, get_all_clients
 from ..debug import debug
 
 sessions_router = APIRouter(prefix="/sessions", tags=["Sessions"])
@@ -242,7 +242,7 @@ def generate_session(
         manual_instructions = session.manual_instructions if session.manual_instructions else ""
         
         # Get emr_type to access session_instructions
-        from ..models import EmrType, UserEMRDocumentationPair
+        from ..models import EmrType, UserEMRDocumentationPair, DocumentationMethod
         emr_type = db.query(EmrType).filter(EmrType.id == session.emr_type_id).first()
         default_duc_id = emr_type.documentation_method_id if emr_type else None
 
@@ -252,24 +252,31 @@ def generate_session(
             UserEMRDocumentationPair.emr_type_id == session.emr_type_id
         ).first()
         
-        if user_emr_pair:
-            # User has customized this EMR type - use their chosen documentation method
-            duc_id = user_emr_pair.documentation_method_id
-            # Find ANY EMR type that uses this documentation method to get the instructions
-            emr_type_with_duc = db.query(EmrType).filter(EmrType.documentation_method_id == duc_id).first()
-            if emr_type_with_duc:
-                methods_instructions = emr_type_with_duc.methods_instructions if emr_type_with_duc.methods_instructions else ""
-                progress_instructions = emr_type_with_duc.progress_towards_goal_instructions if emr_type_with_duc.progress_towards_goal_instructions else ""
-                recommended_changes_instructions = emr_type_with_duc.recommended_changes_instructions if emr_type_with_duc.recommended_changes_instructions else ""
+         # User has customized this EMR type duc method and its not = to defauld duc method from that EMR type - use their chosen documentation method
+        if user_emr_pair and user_emr_pair.documentation_method_id != default_duc_id:
+            session_instructions = None
+            parsed_sections = {
+                'methods_instructions': '',
+                'progress_towards_goal_instructions': '',
+                'recommended_changes_instructions': ''
+             }
+            duc = db.query(DocumentationMethod).filter(DocumentationMethod.id == user_emr_pair.documentation_method_id).first()
+            if duc:
+               doc_method = get_documentation_method(db, duc.id)
+            if doc_method and doc_method.session_instructions:
+                session_instructions = doc_method.session_instructions
+                # Parse the documentation method's session instructions into the three sections
+                parsed_sections = parse_instructions_into_sections(session_instructions)
+                methods_instructions=parsed_sections['methods_instructions'],
+                progress_instructions=parsed_sections['progress_towards_goal_instructions'],
+                recommended_changes_instructions=parsed_sections['recommended_changes_instructions']
             else:
-                # Fallback to original EMR type if no EMR type found with this duc
-                duc_id = default_duc_id
+                # Fallback to original EMR type if no session instructions from that duc method
                 methods_instructions = emr_type.methods_instructions if emr_type and emr_type.methods_instructions else ""
                 progress_instructions = emr_type.progress_towards_goal_instructions if emr_type and emr_type.progress_towards_goal_instructions else ""
                 recommended_changes_instructions = emr_type.recommended_changes_instructions if emr_type and emr_type.recommended_changes_instructions else ""
         else:
-            # User hasn't customized this EMR type - use default documentation method
-            duc_id = default_duc_id
+            # User hasn't customized this EMR type - use default documentation method from that EMR type
             methods_instructions = emr_type.methods_instructions if emr_type and emr_type.methods_instructions else ""
             progress_instructions = emr_type.progress_towards_goal_instructions if emr_type and emr_type.progress_towards_goal_instructions else ""
             recommended_changes_instructions = emr_type.recommended_changes_instructions if emr_type and emr_type.recommended_changes_instructions else ""

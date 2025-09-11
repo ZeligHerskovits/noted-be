@@ -161,7 +161,7 @@ def save_session_instructions(
         raise HTTPException(status_code=404, detail="EMR type not found")
 
     # Parse the session instructions into the three sections if not provided
-    from ..crud import parse_s3_instructions_into_sections
+    from ..crud import parse_instructions_into_sections
     
     if req.methods_instructions and req.progress_towards_goal_instructions and req.recommended_changes_instructions:
         # Use the provided individual fields and clean them
@@ -170,7 +170,7 @@ def save_session_instructions(
         recommended_changes_instructions = re.sub(r'\s+', ' ', html.unescape(req.recommended_changes_instructions)).strip()
     else:
         # Parse from session_instructions if individual fields not provided
-        parsed_sections = parse_s3_instructions_into_sections(req.session_instructions)
+        parsed_sections = parse_instructions_into_sections(req.session_instructions)
         methods_instructions = parsed_sections['methods_instructions']
         progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
         recommended_changes_instructions = parsed_sections['recommended_changes_instructions']

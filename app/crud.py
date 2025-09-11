@@ -214,7 +214,7 @@ Please provide comprehensive analysis based on the session data."""
 import html
 import re
 
-def parse_s3_instructions_into_sections(instructions_text: str):
+def parse_instructions_into_sections(instructions_text: str):
     """Put EVERYTHING up to the SECOND 'Section 2:' into methods_instructions."""
     try:
         s = html.unescape(instructions_text)
@@ -289,11 +289,11 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         if doc_method and doc_method.session_instructions:
             session_instructions = doc_method.session_instructions
             # Parse the documentation method's session instructions into the three sections
-            parsed_sections = parse_s3_instructions_into_sections(session_instructions)
+            parsed_sections = parse_instructions_into_sections(session_instructions)
     else:
         # Fallback to S3 if no documentation method is selected
         session_instructions = get_default_session_instructions_from_s3()
-        parsed_sections = parse_s3_instructions_into_sections(session_instructions)
+        parsed_sections = parse_instructions_into_sections(session_instructions)
     
     emr_type = EmrType(
         name=name,
@@ -346,7 +346,7 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
             doc_method = get_documentation_method(db, documentation_method_id)
             if doc_method and doc_method.session_instructions:
                 # Parse the new documentation method's session instructions
-                parsed_sections = parse_s3_instructions_into_sections(doc_method.session_instructions)
+                parsed_sections = parse_instructions_into_sections(doc_method.session_instructions)
                 emr_type.session_instructions = doc_method.session_instructions
                 emr_type.methods_instructions = parsed_sections['methods_instructions']
                 emr_type.progress_towards_goal_instructions = parsed_sections['progress_towards_goal_instructions']
