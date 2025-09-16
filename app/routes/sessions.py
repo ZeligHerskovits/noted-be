@@ -374,6 +374,13 @@ This is the response you gave me based on my instructions above:
 This is my feedback on your response: "{session.feedback}"
 
 Please provide a comprehensive analysis based on the instructions above, taking into account my feedback on your previous response.
+
+IMPORTANT: Your response MUST be formatted with clear section headers exactly as follows:
+Section 1: Methods
+Section 2: Progress towards goal  
+Section 3: Recommended changes
+
+Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - always use the full "Section X:" format.
 """
         else:
             # Normal prompt without feedback
@@ -384,6 +391,13 @@ Session Data:
 {json.dumps(session_data, indent=2)}
 
 Please provide a comprehensive analysis based on the instructions above.
+
+IMPORTANT: Your response MUST be formatted with clear section headers exactly as follows:
+Section 1: Methods
+Section 2: Progress towards goal  
+Section 3: Recommended changes
+
+Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - always use the full "Section X:" format.
 """
         
         # Call OpenAI API using the client
