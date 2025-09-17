@@ -80,8 +80,11 @@ def get_session_by_id(
         for attr in dir(session):
             if not attr.startswith('_') and not callable(getattr(session, attr)):
                 value = getattr(session, attr)
+                # Handle None values properly
+                if value is None:
+                    session_dict[attr] = None
                 # Handle UUID objects
-                if hasattr(value, '__str__'):
+                elif hasattr(value, '__str__'):
                     session_dict[attr] = str(value)
                 else:
                     session_dict[attr] = value
@@ -142,8 +145,11 @@ def list_sessions(
             for attr in dir(session):
                 if not attr.startswith('_') and not callable(getattr(session, attr)):
                     value = getattr(session, attr)
+                    # Handle None values properly
+                    if value is None:
+                        session_dict[attr] = None
                     # Handle UUID objects
-                    if hasattr(value, '__str__'):
+                    elif hasattr(value, '__str__'):
                         session_dict[attr] = str(value)
                     else:
                         session_dict[attr] = value 
@@ -349,8 +355,11 @@ def generate_session(
                # Skip UUID fields
                if isinstance(value, UUID):
                    continue
+               # Handle None values properly
+               if value is None:
+                  session_data[attr] = None
                # Convert dates to strings for JSON serialization
-               if hasattr(value, '__str__') and not isinstance(value, (str, int, float, bool, type(None))):
+               elif hasattr(value, '__str__') and not isinstance(value, (str, int, float, bool, type(None))):
                   session_data[attr] = str(value)
                else:
                   session_data[attr] = value

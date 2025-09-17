@@ -375,6 +375,11 @@ class SessionResponse(BaseModel):
         from_attributes = True
         # Allow extra fields for dynamic columns
         extra = "allow"
+        # Ensure proper JSON serialization for date fields
+        json_encoders = {
+            date: lambda v: v.isoformat() if v else None,
+            datetime: lambda v: v.isoformat() if v else None
+        }
     
 
 

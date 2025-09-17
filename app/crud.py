@@ -733,9 +733,9 @@ def create_session(db: Session, user_id: UUID, **session_data):
     # Filter to only include fields that exist in the sessions table
     valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
     
-    # Handle empty strings for timestamp fields
+    # Handle empty strings and "None" strings for timestamp/date fields
     for key, value in valid_data.items():
-        if value == '' and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+        if (value == '' or value == 'None') and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
             valid_data[key] = None
     
     if not valid_data:
@@ -889,9 +889,9 @@ def update_session(db: Session, session_id: UUID, **session_data):
     # Filter to only include fields that exist in the sessions table
     valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
     
-    # Handle empty strings for timestamp fields
+    # Handle empty strings and "None" strings for timestamp/date fields
     for key, value in valid_data.items():
-        if value == '' and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+        if (value == '' or value == 'None') and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
             valid_data[key] = None
     
     # Build the UPDATE query
