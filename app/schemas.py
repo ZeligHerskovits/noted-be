@@ -109,6 +109,7 @@ class CompanyResponse(BaseModel):
     name: str
     industry: str | None = None
     emr: str | None = None
+    address: str | None = None
     created_at: Optional[datetime] = None
     is_active: bool
     class Config:
@@ -119,6 +120,7 @@ class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     emr: Optional[str] = None
     industry: Optional[str] = None
+    address: Optional[str] = None
     is_active: Optional[bool] = None
     # Add more fields as needed
 

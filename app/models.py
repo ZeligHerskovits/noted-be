@@ -42,6 +42,7 @@ class Company(Base):
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
     emr = Column(String(50), nullable=True)
+    address = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     is_active = Column(Boolean, default=True, nullable=False)
 
