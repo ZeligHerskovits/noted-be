@@ -94,6 +94,7 @@ async def create_emr_type_with_files(
     session_type: Optional[str] = Form(None),
     documentation_method_id: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
+    emr_url: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
@@ -142,7 +143,8 @@ async def create_emr_type_with_files(
         session_type=session_type,
         documentation_method_id=doc_method_uuid,
         files=files_data,
-        instructions=json_instructions_string
+        instructions=json_instructions_string,
+        emr_url=emr_url
     )
     return emr_type
 import html
@@ -387,6 +389,7 @@ async def update_emr_type_with_files(
     files: Optional[List[UploadFile]] = File(None),
     instructions: Optional[str] = Form(None),
     clear_files: Optional[bool] = Form(False),
+    emr_url: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
@@ -414,6 +417,8 @@ async def update_emr_type_with_files(
         raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
     if instructions is not None:
         update_data['instructions'] = instructions
+    if emr_url is not None:
+        update_data['emr_url'] = emr_url
 
     # Handle files: clear existing files if requested, then upload new files if provided
     if clear_files:

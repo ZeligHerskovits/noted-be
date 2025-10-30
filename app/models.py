@@ -81,6 +81,7 @@ class EmrType(Base):
     methods_instructions = Column(Text, nullable=True)
     progress_towards_goal_instructions = Column(Text, nullable=True)
     recommended_changes_instructions = Column(Text, nullable=True)
+    emr_url = Column(Text, nullable=True)
 
 class EMRTypeField(Base):
     __tablename__ = "emr_type_fields"

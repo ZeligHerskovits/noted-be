@@ -203,6 +203,7 @@ class EmrTypeCreate(BaseModel):
     session_type: Optional[str] = None
     documentation_method_id: Optional[UUID] = None
     files: Optional[List[EmrTypeFile]] = None
+    emr_url: Optional[str] = None
 
 class EmrTypeUpdate(BaseModel):
     name: Optional[str] = None
@@ -214,6 +215,7 @@ class EmrTypeUpdate(BaseModel):
     methods_instructions: Optional[str] = None
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
+    emr_url: Optional[str] = None
 
 class EmrTypeResponse(BaseModel):
     id: UUID
@@ -230,6 +232,7 @@ class EmrTypeResponse(BaseModel):
     methods_instructions: Optional[str] = None
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
+    emr_url: Optional[str] = None
 
     
     class Config:

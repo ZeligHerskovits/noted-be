@@ -242,7 +242,8 @@ def parse_instructions_into_sections(instructions_text: str):
 # EMR Type CRUD operations
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
                    documentation_method_id: Optional[UUID] = None, files: Optional[List[dict]] = None,
-                   instructions: Optional[str] = None, response: Optional[str] = None):
+                   instructions: Optional[str] = None, response: Optional[str] = None,
+                   emr_url: Optional[str] = None):
     
     # Get session instructions from the selected documentation method
     parsed_sections = {
@@ -272,7 +273,8 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         status='draft',  # Set default status to draft
         methods_instructions=parsed_sections['methods_instructions'],
         progress_towards_goal_instructions=parsed_sections['progress_towards_goal_instructions'],
-        recommended_changes_instructions=parsed_sections['recommended_changes_instructions']
+        recommended_changes_instructions=parsed_sections['recommended_changes_instructions'],
+        emr_url=emr_url
     )
     db.add(emr_type)
     db.commit()
@@ -292,7 +294,7 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    previous_status: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None,
                    methods_instructions: Optional[str] = None, progress_towards_goal_instructions: Optional[str] = None,
-                   recommended_changes_instructions: Optional[str] = None):
+                   recommended_changes_instructions: Optional[str] = None, emr_url: Optional[str] = None):
     debug("=== DEBUG: update_emr_type called with emr_type_id={}, processed_chunks={}, total_chunks={} ===", emr_type_id, processed_chunks, total_chunks)
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
@@ -341,6 +343,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.progress_towards_goal_instructions = progress_towards_goal_instructions
     if recommended_changes_instructions is not None:
         emr_type.recommended_changes_instructions = recommended_changes_instructions
+    if emr_url is not None:
+        emr_type.emr_url = emr_url
 
     debug("=== DEBUG: About to commit database changes ===")
     db.commit()
