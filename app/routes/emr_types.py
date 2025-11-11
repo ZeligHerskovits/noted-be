@@ -95,8 +95,9 @@ async def create_emr_type_with_files(
     documentation_method_id: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
     emr_url: Optional[str] = Form(None),
+    created_from_chrome: Optional[str] = Form("false"),  # String "true"/"false" from FormData
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+    current_user: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     files_data = []
     if files:
@@ -110,13 +111,13 @@ async def create_emr_type_with_files(
                 "type": content_type,
                 "size": len(file_content)
             })
-    # Use static JSON instructions format
+    # Use static JSON instructions format with XPath (NO 'value' key)
     json_instructions = {
-        "Example Field": {
-            "value": "example value",
+        "FIELD_NAME": {
+            "api_name": "field_api_name",
             "source": {
-                "selector": "use CSS selector (.class, #id, tag, [attribute], :pseudo-class, etc.) to locate the element containing this data",
-                "attribute": "use the right attribute (textContent, innerHTML, href, src, title, value, alt, data-*, etc.) to extract the data from the element"
+                "type": "xpath",
+                "xpath": "YOUR_XPATH_HERE (use patterns from instructions)"
             }
         }
     }
@@ -137,6 +138,12 @@ async def create_emr_type_with_files(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
     
+    # Convert created_from_chrome string to boolean
+    created_from_chrome_bool = created_from_chrome.lower() == "true"
+    
+    # Get user_id from current_user
+    user_id = current_user.get("id")
+    
     emr_type = create_emr_type(
         db=db,
         name=name,
@@ -144,7 +151,9 @@ async def create_emr_type_with_files(
         documentation_method_id=doc_method_uuid,
         files=files_data,
         instructions=json_instructions_string,
-        emr_url=emr_url
+        emr_url=emr_url,
+        created_from_chrome=created_from_chrome_bool,
+        user_id=user_id
     )
     return emr_type
 import html

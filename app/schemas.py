@@ -204,6 +204,7 @@ class EmrTypeCreate(BaseModel):
     documentation_method_id: Optional[UUID] = None
     files: Optional[List[EmrTypeFile]] = None
     emr_url: Optional[str] = None
+    created_from_chrome: Optional[bool] = False
 
 class EmrTypeUpdate(BaseModel):
     name: Optional[str] = None
@@ -216,6 +217,7 @@ class EmrTypeUpdate(BaseModel):
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
     emr_url: Optional[str] = None
+    xpath_pattern: Optional[Dict[str, str]] = None  # JSON object mapping labels to XPath patterns
 
 class EmrTypeResponse(BaseModel):
     id: UUID
@@ -233,6 +235,9 @@ class EmrTypeResponse(BaseModel):
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
     emr_url: Optional[str] = None
+    xpath_pattern: Optional[Dict[str, str]] = None  # JSON object mapping labels to XPath patterns
+    created_from_chrome: Optional[bool] = False
+    user_id: Optional[UUID] = None
 
     
     class Config:
@@ -461,4 +466,94 @@ class DocumentationMethodResponse(BaseModel):
     updated_at: datetime
     
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+# Modality Schemas
+class ModalityCreate(BaseModel):
+    name: str
+    short_term: Optional[str] = None
+    description: Optional[str] = None
+    modality_setting: Optional[str] = None
+
+class ModalityUpdate(BaseModel):
+    name: Optional[str] = None
+    short_term: Optional[str] = None
+    description: Optional[str] = None
+    modality_setting: Optional[str] = None
+
+class ModalityResponse(BaseModel):
+    id: UUID
+    name: str
+    short_term: Optional[str] = None
+    description: Optional[str] = None
+    modality_setting: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Modality Step Schemas
+class ModalityStepCreate(BaseModel):
+    modality_id: UUID
+    name: str
+
+class ModalityStepUpdate(BaseModel):
+    modality_id: Optional[UUID] = None
+    name: Optional[str] = None
+
+class ModalityStepResponse(BaseModel):
+    id: UUID
+    modality_id: UUID
+    modality_name: Optional[str] = None  # Virtual field for frontend
+    name: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Activity Schemas
+class ActivityCreate(BaseModel):
+    name: str
+    short_term: Optional[str] = None
+    description: Optional[str] = None
+    activity_setting: Optional[str] = None
+
+class ActivityUpdate(BaseModel):
+    name: Optional[str] = None
+    short_term: Optional[str] = None
+    description: Optional[str] = None
+    activity_setting: Optional[str] = None
+
+class ActivityResponse(BaseModel):
+    id: UUID
+    name: str
+    short_term: Optional[str] = None
+    description: Optional[str] = None
+    activity_setting: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Sub-Activity Schemas
+class SubActivityCreate(BaseModel):
+    activity_id: UUID
+    name: str
+
+class SubActivityUpdate(BaseModel):
+    activity_id: Optional[UUID] = None
+    name: Optional[str] = None
+
+class SubActivityResponse(BaseModel):
+    id: UUID
+    activity_id: UUID
+    activity_name: Optional[str] = None  # Virtual field for frontend
+    name: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

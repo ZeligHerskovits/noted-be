@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserEMRDocumentationPair
+from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserEMRDocumentationPair, Modality, ModalityStep, Activity, SubActivity
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -243,7 +243,8 @@ def parse_instructions_into_sections(instructions_text: str):
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
                    documentation_method_id: Optional[UUID] = None, files: Optional[List[dict]] = None,
                    instructions: Optional[str] = None, response: Optional[str] = None,
-                   emr_url: Optional[str] = None):
+                   emr_url: Optional[str] = None, created_from_chrome: bool = False,
+                   user_id: Optional[UUID] = None):
     
     # Get session instructions from the selected documentation method
     parsed_sections = {
@@ -274,7 +275,9 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         methods_instructions=parsed_sections['methods_instructions'],
         progress_towards_goal_instructions=parsed_sections['progress_towards_goal_instructions'],
         recommended_changes_instructions=parsed_sections['recommended_changes_instructions'],
-        emr_url=emr_url
+        emr_url=emr_url,
+        created_from_chrome=created_from_chrome,
+        user_id=user_id
     )
     db.add(emr_type)
     db.commit()
@@ -294,7 +297,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    previous_status: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None,
                    methods_instructions: Optional[str] = None, progress_towards_goal_instructions: Optional[str] = None,
-                   recommended_changes_instructions: Optional[str] = None, emr_url: Optional[str] = None):
+                   recommended_changes_instructions: Optional[str] = None, emr_url: Optional[str] = None,
+                   xpath_pattern: Optional[str] = None):
     debug("=== DEBUG: update_emr_type called with emr_type_id={}, processed_chunks={}, total_chunks={} ===", emr_type_id, processed_chunks, total_chunks)
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
@@ -345,6 +349,9 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
         emr_type.recommended_changes_instructions = recommended_changes_instructions
     if emr_url is not None:
         emr_type.emr_url = emr_url
+    if xpath_pattern is not None:
+        emr_type.xpath_pattern = xpath_pattern
+        debug("=== DEBUG: Updated xpath_pattern ===")
 
     debug("=== DEBUG: About to commit database changes ===")
     db.commit()
@@ -1115,6 +1122,196 @@ def delete_documentation_method(db: Session, documentation_method_id: UUID):
         return False
 
     db.delete(documentation_method)
+    db.commit()
+    return True
+
+# Modality CRUD operations
+def create_modality(db: Session, name: str, short_term: Optional[str] = None, description: Optional[str] = None, modality_setting: Optional[str] = None):
+    """Create a new modality"""
+    modality = Modality(name=name, short_term=short_term, description=description, modality_setting=modality_setting)
+    db.add(modality)
+    db.commit()
+    db.refresh(modality)
+    return modality
+
+def get_modality(db: Session, modality_id: UUID):
+    """Get modality by ID"""
+    return db.query(Modality).filter(Modality.id == modality_id).first()
+
+def get_all_modalities(db: Session):
+    """Get all modalities"""
+    return db.query(Modality).all()
+
+def update_modality(db: Session, modality_id: UUID, name: Optional[str] = None, short_term: Optional[str] = None, description: Optional[str] = None, modality_setting: Optional[str] = None):
+    """Update a modality"""
+    modality = get_modality(db, modality_id)
+    if not modality:
+        return None
+
+    if name is not None:
+        modality.name = name
+    if short_term is not None:
+        modality.short_term = short_term
+    if description is not None:
+        modality.description = description
+    if modality_setting is not None:
+        modality.modality_setting = modality_setting
+
+    db.commit()
+    db.refresh(modality)
+    return modality
+
+def delete_modality(db: Session, modality_id: UUID):
+    """Delete a modality"""
+    modality = get_modality(db, modality_id)
+    if not modality:
+        return False
+
+    db.delete(modality)
+    db.commit()
+    return True
+
+# Modality Step CRUD operations
+def create_modality_step(db: Session, modality_id: UUID, name: str):
+    """Create a new modality step"""
+    modality_step = ModalityStep(modality_id=modality_id, name=name)
+    db.add(modality_step)
+    db.commit()
+    db.refresh(modality_step)
+    return modality_step
+
+def get_modality_step(db: Session, modality_step_id: UUID):
+    """Get modality step by ID"""
+    return db.query(ModalityStep).filter(ModalityStep.id == modality_step_id).first()
+
+def get_all_modality_steps(db: Session):
+    """Get all modality steps with modality names"""
+    steps = db.query(ModalityStep).all()
+    result = []
+    for step in steps:
+        modality = db.query(Modality).filter(Modality.id == step.modality_id).first()
+        step_dict = step.__dict__.copy()
+        step_dict['modality_name'] = modality.name if modality else None
+        result.append(step_dict)
+    return result
+
+def update_modality_step(db: Session, modality_step_id: UUID, modality_id: Optional[UUID] = None, name: Optional[str] = None):
+    """Update a modality step"""
+    modality_step = get_modality_step(db, modality_step_id)
+    if not modality_step:
+        return None
+
+    if modality_id is not None:
+        modality_step.modality_id = modality_id
+    if name is not None:
+        modality_step.name = name
+
+    db.commit()
+    db.refresh(modality_step)
+    return modality_step
+
+def delete_modality_step(db: Session, modality_step_id: UUID):
+    """Delete a modality step"""
+    modality_step = get_modality_step(db, modality_step_id)
+    if not modality_step:
+        return False
+
+    db.delete(modality_step)
+    db.commit()
+    return True
+
+# Activity CRUD operations
+def create_activity(db: Session, name: str, short_term: Optional[str] = None, description: Optional[str] = None, activity_setting: Optional[str] = None):
+    """Create a new activity"""
+    activity = Activity(name=name, short_term=short_term, description=description, activity_setting=activity_setting)
+    db.add(activity)
+    db.commit()
+    db.refresh(activity)
+    return activity
+
+def get_activity(db: Session, activity_id: UUID):
+    """Get activity by ID"""
+    return db.query(Activity).filter(Activity.id == activity_id).first()
+
+def get_all_activities(db: Session):
+    """Get all activities"""
+    return db.query(Activity).all()
+
+def update_activity(db: Session, activity_id: UUID, name: Optional[str] = None, short_term: Optional[str] = None, description: Optional[str] = None, activity_setting: Optional[str] = None):
+    """Update an activity"""
+    activity = get_activity(db, activity_id)
+    if not activity:
+        return None
+
+    if name is not None:
+        activity.name = name
+    if short_term is not None:
+        activity.short_term = short_term
+    if description is not None:
+        activity.description = description
+    if activity_setting is not None:
+        activity.activity_setting = activity_setting
+
+    db.commit()
+    db.refresh(activity)
+    return activity
+
+def delete_activity(db: Session, activity_id: UUID):
+    """Delete an activity"""
+    activity = get_activity(db, activity_id)
+    if not activity:
+        return False
+
+    db.delete(activity)
+    db.commit()
+    return True
+
+# Sub-Activity CRUD operations
+def create_sub_activity(db: Session, activity_id: UUID, name: str):
+    """Create a new sub-activity"""
+    sub_activity = SubActivity(activity_id=activity_id, name=name)
+    db.add(sub_activity)
+    db.commit()
+    db.refresh(sub_activity)
+    return sub_activity
+
+def get_sub_activity(db: Session, sub_activity_id: UUID):
+    """Get sub-activity by ID"""
+    return db.query(SubActivity).filter(SubActivity.id == sub_activity_id).first()
+
+def get_all_sub_activities(db: Session):
+    """Get all sub-activities with activity names"""
+    sub_activities = db.query(SubActivity).all()
+    result = []
+    for sub_activity in sub_activities:
+        activity = db.query(Activity).filter(Activity.id == sub_activity.activity_id).first()
+        sub_activity_dict = sub_activity.__dict__.copy()
+        sub_activity_dict['activity_name'] = activity.name if activity else None
+        result.append(sub_activity_dict)
+    return result
+
+def update_sub_activity(db: Session, sub_activity_id: UUID, activity_id: Optional[UUID] = None, name: Optional[str] = None):
+    """Update a sub-activity"""
+    sub_activity = get_sub_activity(db, sub_activity_id)
+    if not sub_activity:
+        return None
+
+    if activity_id is not None:
+        sub_activity.activity_id = activity_id
+    if name is not None:
+        sub_activity.name = name
+
+    db.commit()
+    db.refresh(sub_activity)
+    return sub_activity
+
+def delete_sub_activity(db: Session, sub_activity_id: UUID):
+    """Delete a sub-activity"""
+    sub_activity = get_sub_activity(db, sub_activity_id)
+    if not sub_activity:
+        return False
+
+    db.delete(sub_activity)
     db.commit()
     return True
 

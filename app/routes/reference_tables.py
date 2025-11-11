@@ -7,7 +7,11 @@ from ..db import SessionLocal
 from ..schemas import (
     CopingSkillCreate, CopingSkillUpdate, CopingSkillResponse,
     ClinicalSpecialtyCreate, ClinicalSpecialtyUpdate, ClinicalSpecialtyResponse,
-    DocumentationMethodCreate, DocumentationMethodUpdate, DocumentationMethodResponse
+    DocumentationMethodCreate, DocumentationMethodUpdate, DocumentationMethodResponse,
+    ModalityCreate, ModalityUpdate, ModalityResponse,
+    ModalityStepCreate, ModalityStepUpdate, ModalityStepResponse,
+    ActivityCreate, ActivityUpdate, ActivityResponse,
+    SubActivityCreate, SubActivityUpdate, SubActivityResponse
 )
 from ..crud import (
     # Coping Skills
@@ -18,7 +22,19 @@ from ..crud import (
     update_clinical_specialty, delete_clinical_specialty,
     # Documentation Methods
     create_documentation_method, get_documentation_method, get_all_documentation_methods,
-    update_documentation_method, delete_documentation_method
+    update_documentation_method, delete_documentation_method,
+    # Modalities
+    create_modality, get_modality, get_all_modalities,
+    update_modality, delete_modality,
+    # Modality Steps
+    create_modality_step, get_modality_step, get_all_modality_steps,
+    update_modality_step, delete_modality_step,
+    # Activities
+    create_activity, get_activity, get_all_activities,
+    update_activity, delete_activity,
+    # Sub-Activities
+    create_sub_activity, get_sub_activity, get_all_sub_activities,
+    update_sub_activity, delete_sub_activity
 )
 from app.routes.auth import get_current_user_with_role, get_current_user_with_role_id
 
@@ -207,3 +223,243 @@ def delete_documentation_method_endpoint(
     success = delete_documentation_method(db, documentation_method_id)
     if not success:
         raise HTTPException(status_code=404, detail="Documentation method not found")
+
+# ==================== MODALITY ROUTES ====================
+
+@router.post("/modalities", response_model=ModalityResponse, status_code=status.HTTP_201_CREATED)
+def create_modality_endpoint(
+    modality: ModalityCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Create a new modality"""
+    return create_modality(db, modality.name, modality.short_term, modality.description, modality.modality_setting)
+
+@router.get("/modalities", response_model=List[ModalityResponse])
+def list_modalities(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # All roles
+):
+    """Get all modalities"""
+    return get_all_modalities(db)
+
+@router.get("/modalities/{modality_id}", response_model=ModalityResponse)
+def get_modality_endpoint(
+    modality_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Get a specific modality by ID"""
+    modality = get_modality(db, modality_id)
+    if not modality:
+        raise HTTPException(status_code=404, detail="Modality not found")
+    return modality
+
+@router.put("/modalities/{modality_id}", response_model=ModalityResponse)
+def update_modality_endpoint(
+    modality_id: UUID,
+    modality_update: ModalityUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Update a modality"""
+    modality = update_modality(
+        db, modality_id,
+        modality_update.name,
+        modality_update.short_term,
+        modality_update.description,
+        modality_update.modality_setting
+    )
+    if not modality:
+        raise HTTPException(status_code=404, detail="Modality not found")
+    return modality
+
+@router.delete("/modalities/{modality_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_modality_endpoint(
+    modality_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Delete a modality"""
+    success = delete_modality(db, modality_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Modality not found")
+
+# ==================== MODALITY STEPS ROUTES ====================
+
+@router.post("/modality-steps", response_model=ModalityStepResponse, status_code=status.HTTP_201_CREATED)
+def create_modality_step_endpoint(
+    modality_step: ModalityStepCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Create a new modality step"""
+    return create_modality_step(db, modality_step.modality_id, modality_step.name)
+
+@router.get("/modality-steps", response_model=List[ModalityStepResponse])
+def list_modality_steps(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # All roles
+):
+    """Get all modality steps"""
+    return get_all_modality_steps(db)
+
+@router.get("/modality-steps/{modality_step_id}", response_model=ModalityStepResponse)
+def get_modality_step_endpoint(
+    modality_step_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Get a specific modality step by ID"""
+    modality_step = get_modality_step(db, modality_step_id)
+    if not modality_step:
+        raise HTTPException(status_code=404, detail="Modality step not found")
+    return modality_step
+
+@router.put("/modality-steps/{modality_step_id}", response_model=ModalityStepResponse)
+def update_modality_step_endpoint(
+    modality_step_id: UUID,
+    modality_step_update: ModalityStepUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Update a modality step"""
+    modality_step = update_modality_step(
+        db, modality_step_id,
+        modality_step_update.modality_id,
+        modality_step_update.name
+    )
+    if not modality_step:
+        raise HTTPException(status_code=404, detail="Modality step not found")
+    return modality_step
+
+@router.delete("/modality-steps/{modality_step_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_modality_step_endpoint(
+    modality_step_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Delete a modality step"""
+    success = delete_modality_step(db, modality_step_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Modality step not found")
+
+# ==================== ACTIVITY ROUTES ====================
+
+@router.post("/activities", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
+def create_activity_endpoint(
+    activity: ActivityCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Create a new activity"""
+    return create_activity(db, activity.name, activity.short_term, activity.description, activity.activity_setting)
+
+@router.get("/activities", response_model=List[ActivityResponse])
+def list_activities(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # All roles
+):
+    """Get all activities"""
+    return get_all_activities(db)
+
+@router.get("/activities/{activity_id}", response_model=ActivityResponse)
+def get_activity_endpoint(
+    activity_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Get a specific activity by ID"""
+    activity = get_activity(db, activity_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return activity
+
+@router.put("/activities/{activity_id}", response_model=ActivityResponse)
+def update_activity_endpoint(
+    activity_id: UUID,
+    activity_update: ActivityUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Update an activity"""
+    activity = update_activity(
+        db, activity_id,
+        activity_update.name,
+        activity_update.short_term,
+        activity_update.description,
+        activity_update.activity_setting
+    )
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return activity
+
+@router.delete("/activities/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_activity_endpoint(
+    activity_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Delete an activity"""
+    success = delete_activity(db, activity_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+# ==================== SUB-ACTIVITY ROUTES ====================
+
+@router.post("/sub-activities", response_model=SubActivityResponse, status_code=status.HTTP_201_CREATED)
+def create_sub_activity_endpoint(
+    sub_activity: SubActivityCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Create a new sub-activity"""
+    return create_sub_activity(db, sub_activity.activity_id, sub_activity.name)
+
+@router.get("/sub-activities", response_model=List[SubActivityResponse])
+def list_sub_activities(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([1, 2, 3]))  # All roles
+):
+    """Get all sub-activities"""
+    return get_all_sub_activities(db)
+
+@router.get("/sub-activities/{sub_activity_id}", response_model=SubActivityResponse)
+def get_sub_activity_endpoint(
+    sub_activity_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Get a specific sub-activity by ID"""
+    sub_activity = get_sub_activity(db, sub_activity_id)
+    if not sub_activity:
+        raise HTTPException(status_code=404, detail="Sub-activity not found")
+    return sub_activity
+
+@router.put("/sub-activities/{sub_activity_id}", response_model=SubActivityResponse)
+def update_sub_activity_endpoint(
+    sub_activity_id: UUID,
+    sub_activity_update: SubActivityUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Update a sub-activity"""
+    sub_activity = update_sub_activity(
+        db, sub_activity_id,
+        sub_activity_update.activity_id,
+        sub_activity_update.name
+    )
+    if not sub_activity:
+        raise HTTPException(status_code=404, detail="Sub-activity not found")
+    return sub_activity
+
+@router.delete("/sub-activities/{sub_activity_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_sub_activity_endpoint(
+    sub_activity_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+):
+    """Delete a sub-activity"""
+    success = delete_sub_activity(db, sub_activity_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Sub-activity not found")

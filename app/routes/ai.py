@@ -24,6 +24,7 @@ from ..models import EMRTypeResult
 from ..schemas import SaveSelectedChunkRequest, SelectedFieldData
 from ..debug import debug
 from typing import Optional
+from app.utils.xpath_generator import generate_xpath_for_all_fields
 load_dotenv()
 
 
@@ -78,10 +79,9 @@ def enhance_response_with_api_names(response_data: dict, db: Session) -> dict:
             # Use existing smart matching function instead of duplicating logic
             api_name = _find_matching_api_name(field_key, field_mapping)
             
-            # Create enhanced field data
+            # Create enhanced field data (NO 'value' field)
             enhanced_field_data = {
-                "value": field_data.get("value", ""),
-                "api_name": api_name,  # Add api_name before source
+                "api_name": api_name,
                 "source": field_data.get("source", {})
             }
             
@@ -95,49 +95,6 @@ def enhance_response_with_api_names(response_data: dict, db: Session) -> dict:
         # Return original response if enhancement fails
         return response_data
 
-def clean_ai_response(response: str) -> str:
-    """Clean and validate AI response to ensure valid JSON"""
-    if not response or not response.strip():
-        return "{}"
-    
-    # Try to find JSON content in the response
-    import re
-    import json
-    
-    # First, try to extract JSON from markdown code blocks (most common)
-    code_block_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
-    code_matches = re.findall(code_block_pattern, response, re.DOTALL)
-    
-    for json_str in code_matches:
-        try:
-            parsed = json.loads(json_str)
-            return json.dumps(parsed, indent=2)
-        except json.JSONDecodeError:
-            continue
-    
-    # If no code blocks, look for JSON objects in the response
-    # Try to find the largest JSON object (most likely to be the complete response)
-    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-    json_matches = re.findall(json_pattern, response, re.DOTALL)
-    
-    largest_json = None
-    largest_size = 0
-    
-    for json_str in json_matches:
-        try:
-            parsed = json.loads(json_str)
-            # Check if this is a larger JSON object (more fields)
-            if isinstance(parsed, dict) and len(parsed) > largest_size:
-                largest_json = parsed
-                largest_size = len(parsed)
-        except json.JSONDecodeError:
-            continue
-    
-    if largest_json:
-        return json.dumps(largest_json, indent=2)
-    
-    # If still no valid JSON, return empty object
-    return "{}"
 
 
 def create_chunks(html_content: str, chunk_size: int = 120000, overlap: int = 6000) -> list:
@@ -325,6 +282,10 @@ async def analyze_emr_file_for_ai(
     # Check if EMR type has been analyzed before allowing generate response
     if emr.status in ["draft", "processing"]:
         raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
+    
+    # Check if xpath_pattern exists
+    if not emr.xpath_pattern:
+        raise HTTPException(status_code=400, detail="XPath pattern not found for this EMR type. Please re-analyze the EMR type.")
 
     # Check if all results have been processed (no more "found" or "not found" statuses)
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
@@ -336,169 +297,55 @@ async def analyze_emr_file_for_ai(
             status_code=400,
             detail=f"Cannot generate response while there are unprocessed fields with 'found' or 'not found' status. Please review and update the following fields: {', '.join(unprocessed_fields)}"
         )
-
     if not emr.files or len(emr.files) == 0:
         raise HTTPException(status_code=404, detail="No file found for this EMR type")
     if not emr.instructions:
         raise HTTPException(status_code=400, detail="No instructions found for this EMR type")
-
-    file_url = emr.files[0].get('url')
-    file_type = emr.files[0].get('type')
-    if not file_url:
-        raise HTTPException(status_code=400, detail="File URL missing in EMR type")
-
-    region = os.getenv("AWS_REGION")
-    prefix = f"https://{S3_BUCKET}.s3.{region}.amazonaws.com/"
-    if not file_url.startswith(prefix):
-        raise HTTPException(status_code=400, detail="File URL is not a valid S3 URL")
-
-    s3_key = urllib.parse.unquote(file_url[len(prefix):])
-    debug("=== DEBUG: Loading file from S3: {} ===")
-    s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
-    file_content = s3_response['Body'].read()
-
-    # Decode the file content
-    raw_html = file_content.decode('utf-8', errors='ignore')
-
-    # Extract iframe content if present
-    # soup = BeautifulSoup(raw_html, 'html.parser')
-    # iframes = soup.find_all('iframe')
-    # if iframes:
-    #     print("✅ Found iframe content in HTML")
-    #     for iframe in iframes:
-    #         # Check srcdoc attribute first
-    #         srcdoc = iframe.get('srcdoc')
-    #         if srcdoc:
-    #             debug("=== DEBUG: Found iframe with srcdoc content ===")
-    #             raw_html += "\n<!-- IFRAME CONTENT -->\n" + srcdoc
-    #         else:
-    #             # Check src attribute
-    #             src = iframe.get('src')
-    #             if src:
-    #                 debug("=== DEBUG: Found iframe with src: {} ===")
-    #             # Check inner content
-    #             iframe_content = iframe.get_text(strip=True)
-    #             if iframe_content:
-    #                 debug("=== DEBUG: Found iframe with inner content ===")
-    #                 raw_html += "\n<!-- IFRAME CONTENT -->\n" + iframe_content
-
-    if not file_type:
-        file_type, _ = mimetypes.guess_type(s3_key)
-
-    # Check file type
-    if file_type != "text/html":
-        raise HTTPException(status_code=400, detail=f"Cannot process non-HTML file type: {file_type or 'unknown'}")
-
-    # Get field names and values from results table
-    results = get_emr_type_results_by_emr_type(db, emr_type_id)
-    field_data = [(result.key, result.value) for result in results if result.status != "ignore" and result.status == "confirmed"]
-    field_names = [{"key": key, "value": value} for key, value in field_data]
- 
-    if not field_names:
-        raise HTTPException(status_code=400, detail="No fields found to extract")
-
-    # Create static instructions for AI
-    debug("=== DEBUG: Creating static instructions with {} field names ===")
+    # Get confirmed fields from results table
+    confirmed_results = [result for result in results if result.status == "confirmed"]
+    if not confirmed_results:
+        raise HTTPException(status_code=400, detail="No confirmed fields found to generate response")
     
-    # Format field_names properly to avoid format string issues
-    field_names_str = "\n".join([f"- {item['key']}: {item['value']}" for item in field_names])
+    debug("=== DEBUG: Generating response for {} confirmed fields ===", len(confirmed_results))
     
-    # Create prompt template
-    prompt_template = """You are analyzing a psychotherapy EMR form. Extract information from the HTML content and return it in the exact JSON format shown below.
-
-IMPORTANT RULES:
-1. Use the exact format shown in the JSON instructions for ALL fields
-2. For each field name, find the actual data in the HTML and extract it
-3. Use appropriate CSS selectors to locate elements (classes, IDs, tags, attributes)
-4. Use the right attribute to extract data (textContent, innerHTML, href, src, title, value, alt, etc.)
-5. Return real data, not placeholder text
-7. Always include both selector and attribute in the source, even if value is empty
-
-KEY-VALUE MATCHING RULE:
-- For each key-value pair in the list below, you must find BOTH the key AND its corresponding value in the HTML file
-- Look through the file to find where the key appears AND what its actual value is
-- Only return json results when you find a complete key-value pair match in the file
-- If you find only the key without its value, or only a value without its key, do NOT return anything for that field
-- The key and value must be connected/related to each other in the HTML structure
-- For each match found, extract the CSS selector and attribute used to locate the data
-
-KEY-VALUE PAIRS TO EXTRACT:
-{field_names_str}
-
-JSON FORMAT TO FOLLOW:
-{emr_instructions}
-
-Apply this exact format to all the field names listed above. Extract real data from the HTML and return it in this json format.
-
-HTML CONTENT: {html_content_for_gpt}"""
-
-    # Create chunks from the full HTML content
-    chunks = create_chunks(raw_html)
-
-    # Store current status as previous_status before setting to processing
-    current_emr = get_emr_type(db, emr_type_id)
-    previous_status = current_emr.status if current_emr.status != "processing" else current_emr.previous_status
+    # Build response data using xpath_pattern from emr_type
+    xpath_patterns = emr.xpath_pattern  # Now a JSON object {label: xpath}
     
-    # Set initial processing status
-    update_emr_type(db, emr_type_id, status="processing", previous_status=previous_status, total_chunks=len(chunks), processed_chunks=0)
-    debug("=== DEBUG: Started processing {} chunks for AI analysis ===")
-
-    if len(chunks) == 1:
-        # Single chunk - process normally
-        debug("=== DEBUG: Processing single chunk for AI ===")
-        prompt = prompt_template.format(
-            field_names_str=field_names_str,
-            emr_instructions=emr.instructions,
-            html_content_for_gpt=chunks[0]
-        )
-
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and return it in the specified JSON format."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=4000
-            )
-            result = response.choices[0].message.content
-            debug("=== DEBUG: AI Response: {} ===")
-
-            # Clean and validate the response before saving
-            cleaned_response = clean_ai_response(result)
-            
-            # Enhance the response with api_names
-            enhanced_response_data = enhance_response_with_api_names(json.loads(cleaned_response), db)
-            
-            # Save the cleaned response to the database
-            update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
-            debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
-
-            return {"result": result}
-
-        except Exception as e:
-            debug("=== DEBUG: Error processing single chunk: {} ===")
-            raise HTTPException(status_code=500, detail=f"Error processing EMR content: {str(e)}")
+    if not xpath_patterns:
+        raise HTTPException(status_code=400, detail="No XPath patterns found for this EMR type. Please re-analyze the EMR type.")
     
-    else:
-        # Multiple chunks - process asynchronously
-        debug("=== DEBUG: Processing {} chunks asynchronously for AI ===")
-        chunk_responses = await process_chunks_async(chunks, prompt_template, emr_type_id, db, field_names_str=field_names_str, emr_instructions=emr.instructions)
+    response_data = {}
+    
+    for result in confirmed_results:
+        field_key = result.key
+        field_label = result.label
         
-        # Combine all chunk responses
-        combined_response = "\n\n".join(chunk_responses)
+        # Look up field-specific XPath from JSON object
+        field_xpath = xpath_patterns.get(field_label)
         
-        # Clean and validate the response before saving
-        cleaned_response = clean_ai_response(combined_response)
-        
-        # Enhance the response with api_names
-        enhanced_response_data = enhance_response_with_api_names(json.loads(cleaned_response), db)
-        
-        # Save the cleaned json response to the database in the response field
-        update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
-        debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
-
-        return {"result": combined_response}
+        if field_xpath:
+            response_data[field_key] = {
+                "source": {
+                    "type": "xpath",
+                    "xpath": field_xpath
+                }
+            }
+            debug("=== DEBUG: Using XPath for field '{}': {} ===", field_key, field_xpath)
+        else:
+            debug("=== DEBUG: No XPath found for field '{}' with label '{}' ===", field_key, field_label)
+    
+    # Enhance the response with api_names
+    enhanced_response_data = enhance_response_with_api_names(response_data, db)
+    
+    # Save the response to the database
+    update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
+    debug("=== DEBUG: Updated EMR type status to 'Generated' with {} fields ===", len(enhanced_response_data))
+    
+    return {
+        "message": "Response generated successfully",
+        "fields_count": len(enhanced_response_data),
+        "response": enhanced_response_data
+    }
 
 
 #Analyze button from the fe is calling this API
@@ -929,9 +776,77 @@ async def save_selected_chunk(
 
     debug("=== DEBUG: Saved {} fields with multiple values ===")
 
-    # Update status to 'analyzed' after successful analysis
-    update_emr_type(db, emr_type_id, status='analyzed')
-    debug("=== DEBUG: Updated EMR type status to 'analyzed' ===")
+    # Generate XPath pattern from the HTML and collected field data
+    try:
+        emr_type = get_emr_type(db, emr_type_id)
+        if emr_type and emr_type.files and len(emr_type.files) > 0:
+            # Get the HTML file from S3
+            file_url = emr_type.files[0].get('url')
+            if file_url:
+                region = os.getenv("AWS_REGION")
+                prefix = f"https://{S3_BUCKET}.s3.{region}.amazonaws.com/"
+                if file_url.startswith(prefix):
+                    s3_key = urllib.parse.unquote(file_url[len(prefix):])
+                    s3_response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
+                    file_content = s3_response['Body'].read()
+                    raw_html = file_content.decode('utf-8', errors='ignore')
+                    
+                    # Prepare field data for XPath generation (only fields with actual values)
+                    field_data_for_xpath = {}
+                    for field, field_data in field_values.items():
+                        values_list = list(field_data['values'])
+                        label = field_data['label']
+                        
+                        # Find a valid value and label (not "not found" or "empty")
+                        for value in values_list:
+                            if value.lower() in ['not found', 'empty', ''] or \
+                               not label or label.lower() in ['not found', 'empty', '']:
+                                continue
+                            field_data_for_xpath[field] = {
+                                'value': value,
+                                'label': label
+                            }
+                            break
+                    
+                    # Generate individual XPath patterns for each field
+                    if field_data_for_xpath:
+                        debug("=== DEBUG: Generating individual XPath patterns for {} fields ===", len(field_data_for_xpath))
+                        new_xpath_patterns = generate_xpath_for_all_fields(raw_html, field_data_for_xpath)
+                        
+                        if new_xpath_patterns:
+                            debug("=== DEBUG: Generated {} new XPath patterns ===", len(new_xpath_patterns))
+                            
+                            # Merge with existing XPaths instead of replacing
+                            existing_xpaths = emr_type.xpath_pattern or {}
+                            if isinstance(existing_xpaths, str):
+                                # Handle legacy string format
+                                existing_xpaths = {}
+                            
+                            # Merge: new patterns override existing ones for same labels
+                            merged_xpaths = {**existing_xpaths, **new_xpath_patterns}
+                            
+                            debug("=== DEBUG: Merged XPaths: {} existing + {} new = {} total ===", 
+                                  len(existing_xpaths), len(new_xpath_patterns), len(merged_xpaths))
+                            
+                            # Update EMR type with merged xpath_patterns (as JSON)
+                            update_emr_type(db, emr_type_id, xpath_pattern=merged_xpaths, status='analyzed')
+                            debug("=== DEBUG: Updated EMR type with merged XPath patterns and status 'analyzed' ===")
+                        else:
+                            debug("=== DEBUG: Could not generate XPath patterns, updating status only ===")
+                            update_emr_type(db, emr_type_id, status='analyzed')
+                    else:
+                        debug("=== DEBUG: No valid fields for XPath generation, updating status only ===")
+                        update_emr_type(db, emr_type_id, status='analyzed')
+                else:
+                    update_emr_type(db, emr_type_id, status='analyzed')
+            else:
+                update_emr_type(db, emr_type_id, status='analyzed')
+        else:
+            update_emr_type(db, emr_type_id, status='analyzed')
+    except Exception as e:
+        debug("=== DEBUG: Error generating XPath pattern: {} ===", str(e))
+        # Still update status even if XPath generation fails
+        update_emr_type(db, emr_type_id, status='analyzed')
 
     total_selections = len(selected_chunks) + len(selected_fields)
     message_parts = []

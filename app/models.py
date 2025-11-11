@@ -82,6 +82,9 @@ class EmrType(Base):
     progress_towards_goal_instructions = Column(Text, nullable=True)
     recommended_changes_instructions = Column(Text, nullable=True)
     emr_url = Column(Text, nullable=True)
+    xpath_pattern = Column(JSONB, nullable=True)  # JSON object mapping field labels to XPath patterns
+    created_from_chrome = Column(Boolean, default=False, nullable=False)  # Track if created from Chrome extension
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Track who created this EMR Type
 
 class EMRTypeField(Base):
     __tablename__ = "emr_type_fields"
@@ -194,4 +197,44 @@ class UserEMRDocumentationPair(Base):
     emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
     documentation_method_id = Column(UUID(as_uuid=True), ForeignKey("documentation_methods.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now()) 
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class Modality(Base):
+    __tablename__ = "modalities"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    name = Column(Text, nullable=False)
+    short_term = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    modality_setting = Column(String(50), nullable=True)  # Individual, Family, Couple
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class ModalityStep(Base):
+    __tablename__ = "modality_steps"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    modality_id = Column(UUID(as_uuid=True), ForeignKey("modalities.id", ondelete="CASCADE"), nullable=False)
+    name = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class Activity(Base):
+    __tablename__ = "activities"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    name = Column(Text, nullable=False)
+    short_term = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    activity_setting = Column(String(50), nullable=True)  # Individual, Family, Couple
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class SubActivity(Base):
+    __tablename__ = "sub_activities"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    activity_id = Column(UUID(as_uuid=True), ForeignKey("activities.id", ondelete="CASCADE"), nullable=False)
+    name = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
