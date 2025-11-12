@@ -744,10 +744,23 @@ def create_session(db: Session, user_id: UUID, **session_data):
     # Filter to only include fields that exist in the sessions table
     valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
     
-    # Handle empty strings and "None" strings for timestamp/date fields
+    # Handle date/time conversion
     for key, value in valid_data.items():
-        if (value == '' or value == 'None') and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
-            valid_data[key] = None
+        col_type = columns_info.get(key)
+        if col_type in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+            if value == '' or value == 'None' or value is None:
+                valid_data[key] = None
+            elif isinstance(value, str) and value:
+                # Try to parse common date formats
+                try:
+                    from dateutil import parser
+                    parsed_date = parser.parse(value)
+                    if col_type == 'date':
+                        valid_data[key] = parsed_date.date()
+                    else:
+                        valid_data[key] = parsed_date
+                except:
+                    valid_data[key] = None  # Invalid date, set to None
     
     if not valid_data:
         raise Exception("No valid fields to insert")
@@ -900,10 +913,23 @@ def update_session(db: Session, session_id: UUID, **session_data):
     # Filter to only include fields that exist in the sessions table
     valid_data = {k: v for k, v in transformed_data.items() if k in existing_columns}
     
-    # Handle empty strings and "None" strings for timestamp/date fields
+    # Handle date/time conversion
     for key, value in valid_data.items():
-        if (value == '' or value == 'None') and columns_info.get(key) in ['timestamp without time zone', 'timestamp with time zone', 'date']:
-            valid_data[key] = None
+        col_type = columns_info.get(key)
+        if col_type in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+            if value == '' or value == 'None' or value is None:
+                valid_data[key] = None
+            elif isinstance(value, str) and value:
+                # Try to parse common date formats
+                try:
+                    from dateutil import parser
+                    parsed_date = parser.parse(value)
+                    if col_type == 'date':
+                        valid_data[key] = parsed_date.date()
+                    else:
+                        valid_data[key] = parsed_date
+                except:
+                    valid_data[key] = None  # Invalid date, set to None
     
     # Build the UPDATE query
     if not valid_data:
