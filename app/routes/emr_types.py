@@ -31,7 +31,7 @@ from ..crud import (
     _create_field_mapping, _create_field_type_mapping,
     create_manual_field, get_manual_field, get_all_manual_fields, get_manual_fields_by_emr_type, update_manual_field, delete_manual_field
 )
-from ..models import EMRTypeField
+from ..models import EMRTypeField, User
 from ..debug import debug
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
@@ -97,7 +97,7 @@ async def create_emr_type_with_files(
     emr_url: Optional[str] = Form(None),
     created_from_chrome: Optional[str] = Form("false"),  # String "true"/"false" from FormData
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+    current_user: User = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
 ):
     files_data = []
     if files:
@@ -142,7 +142,7 @@ async def create_emr_type_with_files(
     created_from_chrome_bool = created_from_chrome.lower() == "true"
     
     # Get user_id from current_user
-    user_id = current_user.get("id")
+    user_id = current_user.id
     
     emr_type = create_emr_type(
         db=db,
