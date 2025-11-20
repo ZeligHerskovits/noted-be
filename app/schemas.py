@@ -10,7 +10,7 @@ class RegisterRequest(BaseModel):
     mobile: Optional[str] = None
     company_name: str
     industry: str
-    emr: Optional[str] = None
+    emr: Optional[List[str]] = None  # List of EMR names
     class Config:
         from_attributes = True
 
@@ -108,17 +108,16 @@ class CompanyResponse(BaseModel):
     id: UUID
     name: str
     industry: str | None = None
-    emr: str | None = None
+    emr: List[str] | None = None  # List of EMR names
     address: str | None = None
     created_at: Optional[datetime] = None
     is_active: bool
     class Config:
         from_attributes = True
-        from_attributes = True
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
-    emr: Optional[str] = None
+    emr: Optional[List[str]] = None  # List of EMR names
     industry: Optional[str] = None
     address: Optional[str] = None
     is_active: Optional[bool] = None
@@ -211,8 +210,7 @@ class EmrTypeUpdate(BaseModel):
     session_type: Optional[str] = None
     documentation_method_id: Optional[UUID] = None
     files: Optional[List[EmrTypeFile]] = None
-    instructions: Optional[str] = None
-    response: Optional[str] = None
+    json_response: Optional[str] = None
     methods_instructions: Optional[str] = None
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
@@ -227,8 +225,7 @@ class EmrTypeResponse(BaseModel):
     files: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    instructions: Optional[str] = None
-    response: Optional[str] = None
+    json_response: Optional[str] = None
     status: Optional[str] = None
     session_instructions: Optional[str] = None
     methods_instructions: Optional[str] = None
@@ -296,7 +293,7 @@ class EMRTypeResultResponse(BaseModel):
         from_attributes = True
 
 class EmrTypeResponseOnly(BaseModel):
-    response: Optional[str] = None
+    json_response: Optional[str] = None
 
 class UpdateResultInstructionsRequest(BaseModel):
     key: str
@@ -373,7 +370,6 @@ class SessionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     manual_instructions: Optional[str] = None
-    session_response: Optional[str] = None
     methods_response: Optional[str] = None
     progress_towards_goal_response: Optional[str] = None
     recommended_changes_response: Optional[str] = None

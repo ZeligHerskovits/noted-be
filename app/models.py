@@ -41,7 +41,7 @@ class Company(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
-    emr = Column(String(50), nullable=True)
+    emr = Column(JSONB, nullable=True)  # JSONB array to store multiple EMR names
     address = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     is_active = Column(Boolean, default=True, nullable=False)
@@ -71,9 +71,8 @@ class EmrType(Base):
     files = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    instructions = Column(String, nullable=True)
     session_instructions = Column(String, nullable=True)
-    response = Column(String, nullable=True)
+    json_response = Column(String, nullable=True)
     status = Column(String(100), nullable=True)
     previous_status = Column(String(100), nullable=True)  # Track previous status before processing
     total_chunks = Column(Integer, nullable=True)
@@ -122,7 +121,6 @@ class Session(Base):
     emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
     emr_name = Column(Text, nullable=True)
     manual_instructions = Column(Text, nullable=True)
-    session_response = Column(Text, nullable=True)
     methods_response = Column(Text, nullable=True)
     progress_towards_goal_response = Column(Text, nullable=True)
     recommended_changes_response = Column(Text, nullable=True)

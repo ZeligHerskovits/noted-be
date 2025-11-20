@@ -170,7 +170,7 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
             html_content_for_gpt=chunk
         )
     elif field_names_str is not None and emr_instructions is not None:
-        # For analyze_emr_file_for_ai function
+        # For generate_response_emr_type function
         prompt = prompt_template.format(
             field_names_str=field_names_str,
             emr_instructions=emr_instructions,
@@ -268,8 +268,8 @@ def normalize_field_name(field_name):
 
 
 # Genarate Response button from fe is calling that API
-@router.post("/analyze-emr-file/")
-async def analyze_emr_file_for_ai(
+@router.post("/generate-response-emr-type/")
+async def generate_response_emr_type(
     req: GenerateRequest,
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
@@ -299,8 +299,6 @@ async def analyze_emr_file_for_ai(
         )
     if not emr.files or len(emr.files) == 0:
         raise HTTPException(status_code=404, detail="No file found for this EMR type")
-    if not emr.instructions:
-        raise HTTPException(status_code=400, detail="No instructions found for this EMR type")
     # Get confirmed fields from results table
     confirmed_results = [result for result in results if result.status == "confirmed"]
     if not confirmed_results:
@@ -338,7 +336,7 @@ async def analyze_emr_file_for_ai(
     enhanced_response_data = enhance_response_with_api_names(response_data, db)
     
     # Save the response to the database
-    update_emr_type(db, emr_type_id, response=json.dumps(enhanced_response_data, indent=2), status='generated')
+    update_emr_type(db, emr_type_id, json_response=json.dumps(enhanced_response_data, indent=2), status='generated')
     debug("=== DEBUG: Updated EMR type status to 'Generated' with {} fields ===", len(enhanced_response_data))
     
     return {

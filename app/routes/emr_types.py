@@ -8,6 +8,7 @@ import boto3
 import os
 import certifi
 import mimetypes
+import logging
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -15,7 +16,7 @@ from app.routes.ai import SaveSessionInstructionsRequest
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from ..db import get_db
-from ..routes.auth import get_current_user_with_role, get_current_user_with_role_id
+from ..routes.auth import get_current_user_with_role, get_current_user_with_role_id, send_email_via_msmtp
 from ..schemas import (
     EmrTypeCreate, EmrTypeUpdate, EmrTypeResponse, EmrTypeFile,
     EMRTypeFieldCreate, EMRTypeFieldUpdate, EMRTypeFieldResponse,
@@ -97,7 +98,7 @@ async def create_emr_type_with_files(
     emr_url: Optional[str] = Form(None),
     created_from_chrome: Optional[str] = Form("false"),  # String "true"/"false" from FormData
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_with_role_id([3]))  # Only Role 3 (super_admin)
+    current_user: User = Depends(get_current_user_with_role_id([1,2,3]))  
 ):
     files_data = []
     if files:
@@ -111,20 +112,7 @@ async def create_emr_type_with_files(
                 "type": content_type,
                 "size": len(file_content)
             })
-    # Use static JSON instructions format with XPath (NO 'value' key)
-    json_instructions = {
-        "FIELD_NAME": {
-            "api_name": "field_api_name",
-            "source": {
-                "type": "xpath",
-                "xpath": "YOUR_XPATH_HERE (use patterns from instructions)"
-            }
-        }
-    }
-
-    # Save the generated JSON instructions to the EMR type in the instructions field
-    import json
-    json_instructions_string = json.dumps(json_instructions)
+  
     # Convert documentation_method_id to UUID and validate it exists
     if not documentation_method_id or documentation_method_id.strip() == "":
         raise HTTPException(status_code=400, detail="Documentation method is required")
@@ -150,11 +138,35 @@ async def create_emr_type_with_files(
         session_type=session_type,
         documentation_method_id=doc_method_uuid,
         files=files_data,
-        instructions=json_instructions_string,
         emr_url=emr_url,
         created_from_chrome=created_from_chrome_bool,
         user_id=user_id
     )
+    
+    # Send email notification if created from Chrome
+    if created_from_chrome_bool:
+        subject = "EMR Request Received - Pending Review"
+        body = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #3b82f6;">Thank You for Your EMR Request</h2>
+              <p>Hello {current_user.full_name or 'there'},</p>
+              <p>We have successfully received your Electronic Medical Record (EMR) request. Your request is currently <strong>pending review</strong> by our team.</p>
+              <p>We will carefully review your submission and notify you via email once it has been approved. You can expect to hear from us soon.</p>
+              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+              <p style="margin-top: 30px;">Best regards,<br><strong>The Noted Team</strong></p>
+            </div>
+          </body>
+        </html>
+        """
+        try:
+            send_email_via_msmtp(current_user.email, subject, body)
+        except Exception as e:
+            # Log error but don't fail the request if email fails
+            import logging
+            logging.error(f"Failed to send EMR request confirmation email: {e}")
+    
     return emr_type
 import html
 import re
@@ -225,7 +237,7 @@ def get_emr_type_endpoint(
         
         # If response_only is requested, return only the response
         if response_only:
-            return EmrTypeResponseOnly(response=emr_type.response)
+            return EmrTypeResponseOnly(json_response=emr_type.json_response)
         
         # Patch: update file URLs to signed URLs
         if hasattr(emr_type, 'files'):
@@ -330,7 +342,7 @@ def update_result_status(
         "status": result.status
     }
 
-# This get called when pressing the back button in the EMR Type Details
+# This get called when clicking the back < in the EMR Type Details
 @router.put("/{emr_type_id}/back-action")
 def back_action_emr_type(
     emr_type_id: UUID, 
@@ -396,7 +408,6 @@ async def update_emr_type_with_files(
     session_type: Optional[str] = Form(None),
     documentation_method_id: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
-    instructions: Optional[str] = Form(None),
     clear_files: Optional[bool] = Form(False),
     emr_url: Optional[str] = Form(None),
     db: Session = Depends(get_db),
@@ -424,8 +435,6 @@ async def update_emr_type_with_files(
         update_data['documentation_method_id'] = doc_method_uuid
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid documentation_method_id format")
-    if instructions is not None:
-        update_data['instructions'] = instructions
     if emr_url is not None:
         update_data['emr_url'] = emr_url
 
@@ -681,6 +690,32 @@ def finalize_emr_type(
         emr_type_id=emr_type_id,
         status="active"
     )
+    
+    # Send approval email if EMR was created from Chrome
+    if emr_type.created_from_chrome and emr_type.user_id:
+        # Get the user who created this EMR
+        user = db.query(User).filter(User.id == emr_type.user_id).first()
+        if user and user.email:
+            subject = "Your EMR Request Has Been Approved!"
+            body = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                  <h2 style="color: #10b981;">Great News! Your EMR Has Been Approved</h2>
+                  <p>Hello {user.full_name or 'there'},</p>
+                  <p>We're excited to inform you that your Electronic Medical Record (EMR) request for <strong>{emr_type.name}</strong> has been <strong>approved and finalized</strong>!</p>
+                  <p>Your EMR is now active and ready to use. You can start using it right away.</p>
+                  <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+                  <p style="margin-top: 30px;">Best regards,<br><strong>The Noted Team</strong></p>
+                </div>
+              </body>
+            </html>
+            """
+            try:
+                send_email_via_msmtp(user.email, subject, body)
+            except Exception as e:
+                # Log error but don't fail the finalize request if email fails
+                logging.error(f"Failed to send EMR approval email: {e}")
     
     return {
         "message": "EMR type finalized successfully",

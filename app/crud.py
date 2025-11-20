@@ -118,7 +118,10 @@ def get_all_users_with_roles(db: Session):
         enriched_users.append(user_dict)
     return enriched_users
 
-def create_company(db: Session, name: str, industry: str, emr: str = None):
+def create_company(db: Session, name: str, industry: str, emr: List[str] = None):
+    # Convert single string to list for backward compatibility if needed
+    if emr is not None and isinstance(emr, str):
+        emr = [emr]
     company = Company(name=name, industry=industry, emr=emr)
     db.add(company)
     db.commit()
@@ -242,7 +245,7 @@ def parse_instructions_into_sections(instructions_text: str):
 # EMR Type CRUD operations
 def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
                    documentation_method_id: Optional[UUID] = None, files: Optional[List[dict]] = None,
-                   instructions: Optional[str] = None, response: Optional[str] = None,
+                   json_response: Optional[str] = None,
                    emr_url: Optional[str] = None, created_from_chrome: bool = False,
                    user_id: Optional[UUID] = None):
     
@@ -269,8 +272,7 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         session_type=session_type,
         documentation_method_id=documentation_method_id,
         files=files,
-        instructions=instructions,
-        response=response,
+        json_response=json_response,
         status='draft',  # Set default status to draft
         methods_instructions=parsed_sections['methods_instructions'],
         progress_towards_goal_instructions=parsed_sections['progress_towards_goal_instructions'],
@@ -292,8 +294,8 @@ def get_all_emr_types(db: Session):
 
 def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    session_type: Optional[str] = None, documentation_method_id: Optional[UUID] = None,
-                   files: Optional[List[dict]] = None, instructions: Optional[str] = None,
-                   response: Optional[str] = None, status: Optional[str] = None,
+                   files: Optional[List[dict]] = None, 
+                   json_response: Optional[str] = None, status: Optional[str] = None,
                    previous_status: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None,
                    methods_instructions: Optional[str] = None, progress_towards_goal_instructions: Optional[str] = None,
@@ -327,10 +329,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
 
     if files is not None:
         emr_type.files = files
-    if instructions is not None:
-        emr_type.instructions = instructions
-    if response is not None:
-        emr_type.response = response
+    if json_response is not None:
+        emr_type.json_response = json_response
     if status is not None:
         emr_type.status = status
     if previous_status is not None:
