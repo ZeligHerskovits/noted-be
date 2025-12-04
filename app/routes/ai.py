@@ -809,10 +809,15 @@ async def save_selected_chunk(
                     # Generate individual XPath patterns for each field
                     if field_data_for_xpath:
                         debug("=== DEBUG: Generating individual XPath patterns for {} fields ===", len(field_data_for_xpath))
-                        new_xpath_patterns = generate_xpath_for_all_fields(raw_html, field_data_for_xpath)
+                        xpath_result = generate_xpath_for_all_fields(raw_html, field_data_for_xpath)
                         
-                        if new_xpath_patterns:
+                        if xpath_result and xpath_result.get('xpath_patterns'):
+                            new_xpath_patterns = xpath_result['xpath_patterns']
+                            is_popup = xpath_result.get('is_popup', False)
+                            popup_root_selector = xpath_result.get('popup_root_selector')
+                            
                             debug("=== DEBUG: Generated {} new XPath patterns ===", len(new_xpath_patterns))
+                            debug("=== DEBUG: Popup detected: {}, Selector: {} ===", is_popup, popup_root_selector)
                             
                             # Merge with existing XPaths instead of replacing
                             existing_xpaths = emr_type.xpath_pattern or {}
@@ -826,9 +831,16 @@ async def save_selected_chunk(
                             debug("=== DEBUG: Merged XPaths: {} existing + {} new = {} total ===", 
                                   len(existing_xpaths), len(new_xpath_patterns), len(merged_xpaths))
                             
-                            # Update EMR type with merged xpath_patterns (as JSON)
-                            update_emr_type(db, emr_type_id, xpath_pattern=merged_xpaths, status='analyzed')
-                            debug("=== DEBUG: Updated EMR type with merged XPath patterns and status 'analyzed' ===")
+                            # Update EMR type with merged xpath_patterns, popup info, and status
+                            update_emr_type(
+                                db, 
+                                emr_type_id, 
+                                xpath_pattern=merged_xpaths, 
+                                is_popup=is_popup,
+                                popup_root_selector=popup_root_selector,
+                                status='analyzed'
+                            )
+                            debug("=== DEBUG: Updated EMR type with merged XPath patterns, popup info, and status 'analyzed' ===")
                         else:
                             debug("=== DEBUG: Could not generate XPath patterns, updating status only ===")
                             update_emr_type(db, emr_type_id, status='analyzed')

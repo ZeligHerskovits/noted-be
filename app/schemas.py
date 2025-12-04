@@ -204,6 +204,8 @@ class EmrTypeCreate(BaseModel):
     files: Optional[List[EmrTypeFile]] = None
     emr_url: Optional[str] = None
     created_from_chrome: Optional[bool] = False
+    is_popup: Optional[bool] = False  # Flag to indicate if EMR type uses popup
+    popup_root_selector: Optional[str] = None  # CSS selector for popup container
 
 class EmrTypeUpdate(BaseModel):
     name: Optional[str] = None
@@ -216,6 +218,8 @@ class EmrTypeUpdate(BaseModel):
     recommended_changes_instructions: Optional[str] = None
     emr_url: Optional[str] = None
     xpath_pattern: Optional[Dict[str, str]] = None  # JSON object mapping labels to XPath patterns
+    is_popup: Optional[bool] = None  # Flag to indicate if EMR type uses popup
+    popup_root_selector: Optional[str] = None  # CSS selector for popup container
 
 class EmrTypeResponse(BaseModel):
     id: UUID
@@ -233,6 +237,8 @@ class EmrTypeResponse(BaseModel):
     recommended_changes_instructions: Optional[str] = None
     emr_url: Optional[str] = None
     xpath_pattern: Optional[Dict[str, str]] = None  # JSON object mapping labels to XPath patterns
+    is_popup: Optional[bool] = False  # Flag to indicate if EMR type uses popup
+    popup_root_selector: Optional[str] = None  # CSS selector for popup container
     created_from_chrome: Optional[bool] = False
     user_id: Optional[UUID] = None
 

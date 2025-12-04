@@ -247,7 +247,8 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
                    documentation_method_id: Optional[UUID] = None, files: Optional[List[dict]] = None,
                    json_response: Optional[str] = None,
                    emr_url: Optional[str] = None, created_from_chrome: bool = False,
-                   user_id: Optional[UUID] = None):
+                   user_id: Optional[UUID] = None, is_popup: Optional[bool] = False,
+                   popup_root_selector: Optional[str] = None):
     
     # Get session instructions from the selected documentation method
     parsed_sections = {
@@ -279,7 +280,9 @@ def create_emr_type(db: Session, name: str, session_type: Optional[str] = None,
         recommended_changes_instructions=parsed_sections['recommended_changes_instructions'],
         emr_url=emr_url,
         created_from_chrome=created_from_chrome,
-        user_id=user_id
+        user_id=user_id,
+        is_popup=is_popup if is_popup is not None else False,
+        popup_root_selector=popup_root_selector
     )
     db.add(emr_type)
     db.commit()
@@ -300,7 +303,8 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
                    total_chunks: Optional[int] = None, processed_chunks: Optional[int] = None,
                    methods_instructions: Optional[str] = None, progress_towards_goal_instructions: Optional[str] = None,
                    recommended_changes_instructions: Optional[str] = None, emr_url: Optional[str] = None,
-                   xpath_pattern: Optional[str] = None):
+                   xpath_pattern: Optional[str] = None, is_popup: Optional[bool] = None,
+                   popup_root_selector: Optional[str] = None):
     debug("=== DEBUG: update_emr_type called with emr_type_id={}, processed_chunks={}, total_chunks={} ===", emr_type_id, processed_chunks, total_chunks)
     emr_type = get_emr_type(db, emr_type_id)
     if not emr_type:
@@ -352,6 +356,12 @@ def update_emr_type(db: Session, emr_type_id: UUID, name: Optional[str] = None,
     if xpath_pattern is not None:
         emr_type.xpath_pattern = xpath_pattern
         debug("=== DEBUG: Updated xpath_pattern ===")
+    if is_popup is not None:
+        emr_type.is_popup = is_popup
+        debug("=== DEBUG: Updated is_popup to {} ===", is_popup)
+    if popup_root_selector is not None:
+        emr_type.popup_root_selector = popup_root_selector
+        debug("=== DEBUG: Updated popup_root_selector to {} ===", popup_root_selector)
 
     debug("=== DEBUG: About to commit database changes ===")
     db.commit()

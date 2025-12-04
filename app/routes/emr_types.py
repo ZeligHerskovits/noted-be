@@ -143,8 +143,9 @@ async def create_emr_type_with_files(
         user_id=user_id
     )
     
-    # Send email notification if created from Chrome
+    # Send email notifications if created from Chrome
     if created_from_chrome_bool:
+        # 1) Confirmation email to the user who created the EMR type
         subject = "EMR Request Received - Pending Review"
         body = f"""
         <html>
@@ -166,7 +167,45 @@ async def create_emr_type_with_files(
             # Log error but don't fail the request if email fails
             import logging
             logging.error(f"Failed to send EMR request confirmation email: {e}")
-    
+
+        # 2) Notification email to all super admins (role_id == 3)
+        try:
+            super_admins = db.query(User).filter(User.role_id == 3, User.is_active == True).all()
+            if super_admins:
+                admin_subject = "New EMR Type Created from Chrome - Awaiting Analysis"
+                emr_name = emr_type.name
+                creator_name = current_user.full_name or current_user.email
+                created_at_str = emr_type.created_at.strftime("%Y-%m-%d %H:%M")
+                admin_body = f"""
+                <html>
+                  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                      <h2 style="color: #3b82f6;">New EMR Type Waiting for Analysis</h2>
+                      <p>Hello,</p>
+                      <p>A new EMR type has been created from the Chrome extension and is waiting to be analyzed.</p>
+                      <ul>
+                        <li><strong>EMR Name:</strong> {emr_name}</li>
+                        <li><strong>Session Type:</strong> {session_type or 'N/A'}</li>
+                        <li><strong>Created By:</strong> {creator_name}</li>
+                        <li><strong>Created At:</strong> {created_at_str}</li>
+                      </ul>
+                      <p>You can review and analyze this EMR type in the Noted admin panel.</p>
+                      <p style="margin-top: 30px;">Best regards,<br><strong>The Noted System</strong></p>
+                    </div>
+                  </body>
+                </html>
+                """
+                for admin in super_admins:
+                    if admin.email:
+                        try:
+                            send_email_via_msmtp(admin.email, admin_subject, admin_body)
+                        except Exception as e:
+                            import logging
+                            logging.error(f"Failed to send EMR creation notification to admin {admin.email}: {e}")
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to prepare EMR creation notifications for super admins: {e}")
+
     return emr_type
 import html
 import re

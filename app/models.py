@@ -84,6 +84,8 @@ class EmrType(Base):
     xpath_pattern = Column(JSONB, nullable=True)  # JSON object mapping field labels to XPath patterns
     created_from_chrome = Column(Boolean, default=False, nullable=False)  # Track if created from Chrome extension
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Track who created this EMR Type
+    is_popup = Column(Boolean, default=False, nullable=False)  # Flag to indicate if EMR type uses popup
+    popup_root_selector = Column(Text, nullable=True)  # CSS selector for popup container (only for popup EMR types)
 
 class EMRTypeField(Base):
     __tablename__ = "emr_type_fields"
