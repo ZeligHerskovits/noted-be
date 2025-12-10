@@ -418,7 +418,7 @@ Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - 
             client = OpenAI(api_key=openai_api_key)
             
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini",
                 messages=[
                     {
                         "role": "user",
