@@ -811,15 +811,15 @@ async def save_selected_chunk(
                         debug("=== DEBUG: Generating individual XPath patterns for {} fields ===", len(field_data_for_xpath))
                         xpath_result = generate_xpath_for_all_fields(raw_html, field_data_for_xpath)
                         
-                        if xpath_result and xpath_result.get('xpath_patterns'):
-                            new_xpath_patterns = xpath_result['xpath_patterns']
+                        if xpath_result and xpath_result.get('xpath_patterns') is not None:
+                            new_xpath_patterns = xpath_result.get('xpath_patterns') or {}
                             is_popup = xpath_result.get('is_popup', False)
                             popup_root_selector = xpath_result.get('popup_root_selector')
                             
                             debug("=== DEBUG: Generated {} new XPath patterns ===", len(new_xpath_patterns))
                             debug("=== DEBUG: Popup detected: {}, Selector: {} ===", is_popup, popup_root_selector)
                             
-                            # Merge with existing XPaths instead of replacing
+                            # Always save generated XPaths (no validation check)
                             existing_xpaths = emr_type.xpath_pattern or {}
                             if isinstance(existing_xpaths, str):
                                 # Handle legacy string format
@@ -871,7 +871,7 @@ async def save_selected_chunk(
         "message": message,
         "chunks_processed": len(selected_chunks),
         "fields_processed": len(selected_fields),
-        "total_processed": total_selections
+        "total_processed": total_selections,
     }
 
 # Get current analysis progress for a specific EMR type, get called every few seconds from the FE while analyzing

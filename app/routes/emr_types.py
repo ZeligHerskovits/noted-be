@@ -32,7 +32,7 @@ from ..crud import (
     _create_field_mapping, _create_field_type_mapping,
     create_manual_field, get_manual_field, get_all_manual_fields, get_manual_fields_by_emr_type, update_manual_field, delete_manual_field
 )
-from ..models import EMRTypeField, User
+from ..models import EMRTypeField, User, Company, UserEMRDocumentationPair
 from ..debug import debug
 
 router = APIRouter(prefix="/emr-types", tags=["EMR Types"])
@@ -730,13 +730,44 @@ def finalize_emr_type(
         status="active"
     )
     
-    # Send approval email if EMR was created from Chrome
+    # If EMR was created from Chrome, create pair and update company
     if emr_type.created_from_chrome and emr_type.user_id:
-        # Get the user who created this EMR
-        user = db.query(User).filter(User.id == emr_type.user_id).first()
-        if user and user.email:
-            subject = "Your EMR Request Has Been Approved!"
-            body = f"""
+        try:
+            user = db.query(User).filter(User.id == emr_type.user_id).first()
+            if user:
+                # Create pair
+                if emr_type.documentation_method_id:
+                    existing = db.query(UserEMRDocumentationPair).filter(
+                        UserEMRDocumentationPair.user_id == user.id,
+                        UserEMRDocumentationPair.emr_type_id == emr_type_id,
+                        UserEMRDocumentationPair.documentation_method_id == emr_type.documentation_method_id
+                    ).first()
+                    if not existing:
+                        db.add(UserEMRDocumentationPair(
+                            user_id=user.id,
+                            emr_type_id=emr_type_id,
+                            documentation_method_id=emr_type.documentation_method_id
+                        ))
+                        db.commit()
+                from sqlalchemy.orm.attributes import flag_modified
+                # Update company
+                if user.company_id:
+                    company = db.query(Company).filter(Company.id == user.company_id).first()
+                    if company:
+                        emr_arr = company.emr or []
+                        if emr_type.name not in emr_arr:
+                            emr_arr.append(emr_type.name)
+                            company.emr = emr_arr
+                            # 👇 tell SQLAlchemy that the JSONB field changed
+                            flag_modified(company, "emr")
+
+                            db.commit()
+                            db.refresh(company)
+                
+                # Send email
+                if user.email:
+                    subject = "Your EMR Request Has Been Approved!"
+                    body = f"""
             <html>
               <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
                 <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -750,11 +781,12 @@ def finalize_emr_type(
               </body>
             </html>
             """
-            try:
-                send_email_via_msmtp(user.email, subject, body)
-            except Exception as e:
-                # Log error but don't fail the finalize request if email fails
-                logging.error(f"Failed to send EMR approval email: {e}")
+                    try:
+                        send_email_via_msmtp(user.email, subject, body)
+                    except Exception as e:
+                        logging.error(f"Failed to send EMR approval email: {e}")
+        except Exception as e:
+            logging.error(f"Error in finalize: {e}")
     
     return {
         "message": "EMR type finalized successfully",

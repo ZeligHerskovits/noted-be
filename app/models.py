@@ -41,7 +41,7 @@ class Company(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
-    emr = Column(JSONB, nullable=True)  # JSONB array to store multiple EMR names
+    emr = Column(MutableList.as_mutable(JSONB), nullable=True) # JSONB array to store multiple EMR names
     address = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     is_active = Column(Boolean, default=True, nullable=False)

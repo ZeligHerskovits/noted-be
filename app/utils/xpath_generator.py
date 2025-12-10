@@ -17,6 +17,16 @@ def normalize_text(text: str) -> str:
     return ' '.join(text.strip().split()).lower()
 
 
+# Labels that we intentionally IGNORE for XPath generation/validation.
+# For example, "Client" in some EMRs is not needed for automation and is
+# difficult to map reliably, so we skip it entirely and never treat it as
+# a failure for the overall XPath generation.
+IGNORED_LABELS = {
+    "client",               # matches "Client" / "Client:" after normalization + rstrip(':')
+    "location of session",  # matches "Location of Session:" etc.
+}
+
+
 def is_popup_visible(popup: html.HtmlElement) -> bool:
     """
     Check if a popup is currently visible/open.
@@ -526,8 +536,12 @@ def find_value_element_near_label(tree: html.HtmlElement, label_elem: html.HtmlE
         all_elements = tree.xpath("//*")
         print(f"{debug_prefix} - searching for value in entire document")
     
-    # Collect all near matches, don't return first one
-    near_matches = []
+    # Collect all near matches and global candidates, don't return first one.
+    # We distinguish between NEAR+EXACT and NEAR+CONTAINS so that we can
+    # prefer pure value nodes when strict validation is enabled.
+    near_matches = []         # contains (near) or exact (near)
+    near_exact_matches = []   # exact (near) only
+    all_candidates = []       # global contains/exact, regardless of distance
     
     for val_elem in all_elements:
         elem_text = val_elem.text_content().strip()
@@ -539,9 +553,13 @@ def find_value_element_near_label(tree: html.HtmlElement, label_elem: html.HtmlE
         
         # Check for exact match or contains match (case-insensitive)
         if elem_text_lower == expected_value_lower or expected_value_lower in elem_text_lower:
+            # Track as a general candidate
+            all_candidates.append(val_elem)
             # Check if it's reasonably close to the label
             if is_element_near(label_elem, val_elem):
                 near_matches.append(val_elem)
+                if elem_text_lower == expected_value_lower:
+                    near_exact_matches.append(val_elem)
             else:
                 # Helpful debug to understand why a good-looking candidate was rejected
                 snippet = elem_text[:80].replace("\n", " ")
@@ -572,6 +590,27 @@ def find_value_element_near_label(tree: html.HtmlElement, label_elem: html.HtmlE
         except Exception as e:
             print(f"{debug_prefix} - structural fallback error: {e}")
 
+        # Final fallback: if we still have no near match but DO have global
+        # candidates that contain the expected value, pick the "best" one.
+        # This is especially important for grid/row fields (Date, Time In, etc.)
+        # where the label might live in a header (<th>) and the value in a body
+        # cell (<td>) that is structurally far away in the DOM.
+        if all_candidates:
+            print(f"{debug_prefix} - using GLOBAL fallback (no near matches, but {len(all_candidates)} candidates found)")
+            # Prefer elements with stable attributes first
+            stable = [
+                e for e in all_candidates
+                if 'data-testid' in e.attrib
+                or 'data-test-id' in e.attrib
+                or (e.get('class') and any(cls in e.get('class') for cls in ['session_date', 'timein', 'timeout']))
+            ]
+            target_pool = stable or all_candidates
+            # Among target pool, prefer leaf nodes with shortest text (closest to pure value)
+            leaf_candidates = [e for e in target_pool if len(e) == 0]
+            if leaf_candidates:
+                return min(leaf_candidates, key=lambda e: len(e.text_content()))
+            return min(target_pool, key=lambda e: len(e.text_content()))
+
         return None
     
     # Find the MOST SPECIFIC element among near matches
@@ -581,7 +620,10 @@ def find_value_element_near_label(tree: html.HtmlElement, label_elem: html.HtmlE
     # 3. Smallest text content
     
     # First, prefer elements with stable test attributes
-    stable_matches = [e for e in near_matches if 'data-testid' in e.attrib or 'data-test-id' in e.attrib]
+    # Prefer exact matches if we found any near the label
+    target_near = near_exact_matches or near_matches
+
+    stable_matches = [e for e in target_near if 'data-testid' in e.attrib or 'data-test-id' in e.attrib]
     if stable_matches:
         # Among stable elements, prefer leaf nodes
         stable_leaf = [e for e in stable_matches if len(e) == 0]
@@ -590,12 +632,12 @@ def find_value_element_near_label(tree: html.HtmlElement, label_elem: html.HtmlE
         return min(stable_matches, key=lambda e: len(e.text_content()))
     
     # No stable attributes, prefer leaf nodes
-    leaf_matches = [e for e in near_matches if len(e) == 0]
+    leaf_matches = [e for e in target_near if len(e) == 0]
     if leaf_matches:
         return min(leaf_matches, key=lambda e: len(e.text_content()))
     
     # Fall back to smallest text content
-    return min(near_matches, key=lambda e: len(e.text_content()))
+    return min(target_near, key=lambda e: len(e.text_content()))
 
 
 def is_element_near(elem1: html.HtmlElement, elem2: html.HtmlElement, max_depth: int = 10) -> bool:
@@ -709,6 +751,49 @@ def analyze_element_relationship(tree: html.HtmlElement, label_elem: html.HtmlEl
         return f"following-sibling::td"
     
     return None
+
+
+def build_row_relative_xpath(value_elem: html.HtmlElement) -> str:
+    """
+    Build a row‑relative XPath for a value element.
+    This is used for fields that live in the grid row (outside the popup).
+    The returned XPath is intended to be evaluated with the <tr> element as
+    the context node, so it always starts with './/'.
+    """
+    value_tag = value_elem.tag
+    value_attrs = dict(value_elem.attrib)
+
+    # Start with a relative selector from the row context
+    selector_parts = [f".//{value_tag}"]
+
+    # Prefer stable attributes on the value cell so the XPath works across rows
+    # and sessions (we avoid using the actual value text because that changes).
+    if 'data-testid' in value_attrs:
+        selector_parts.append(f"[@data-testid='{value_attrs['data-testid']}']")
+    elif 'data-test-id' in value_attrs:
+        selector_parts.append(f"[@data-test-id='{value_attrs['data-test-id']}']")
+    elif 'id' in value_attrs and value_attrs['id']:
+        selector_parts.append(f"[@id='{value_attrs['id']}']")
+    elif 'class' in value_attrs and value_attrs['class']:
+        # Use first class and match via contains() to be resilient to extra classes
+        first_class = value_attrs['class'].split()[0]
+        selector_parts.append(f"[contains(@class, '{first_class}')]")
+    else:
+        # Fallback: use positional index of this cell within its row for stability
+        row = value_elem
+        while row is not None and row.tag != 'tr':
+            row = row.getparent()
+        if row is not None:
+            # Consider only element children with the same tag (td/th) in this row
+            same_tag_children = [e for e in row if isinstance(e, html.HtmlElement) and e.tag == value_tag]
+            try:
+                index = same_tag_children.index(value_elem) + 1  # XPath is 1‑based
+                selector_parts.append(f"[{index}]")
+            except ValueError:
+                # If for some reason we can't determine index, just use the tag alone
+                pass
+
+    return ''.join(selector_parts)
 
 
 def build_xpath_pattern(tree: html.HtmlElement, label_elem: html.HtmlElement, 
@@ -1014,73 +1099,165 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     print(f"{'='*60}\n")
     
     # Filter out fields without valid values
-    valid_fields = {
-        data['label']: data['value'] 
-        for data in field_data.values() 
-        if data.get('value') and data.get('label') and 
-           data['value'].lower() not in ['not found', 'empty', '']
-    }
+    valid_fields: Dict[str, str] = {}
+    for data in field_data.values():
+        value = data.get('value')
+        label = data.get('label')
+        if not value or not label:
+            continue
+        if value.lower() in ['not found', 'empty', '']:
+            continue
+        valid_fields[label] = value
     
     if not valid_fields:
         return None
     
     # Generate XPath for each field individually
-    xpath_patterns = {}
+    xpath_patterns: Dict[str, str] = {}
     successful_count = 0
+    failed_fields: Dict[str, str] = {}
+    # total_fields counts only fields that are NOT in the ignored list, so
+    # e.g. "Client" will never block all_valid from being True.
+    total_fields = sum(
+        1
+        for label in valid_fields.keys()
+        if normalize_text(label).rstrip(':') not in IGNORED_LABELS
+    )
     
     for idx, (label, value) in enumerate(valid_fields.items(), 1):
         print(f"\n{'='*70}")
         print(f"--- Field {idx}/{len(valid_fields)}: '{label}' = '{value}' ---")
         print(f"{'='*70}")
+        label_norm = normalize_text(label).rstrip(':')
         
-        # If popup detected, search ONLY inside popup (no document-level search)
+        # NEW BEHAVIOR:
+        # If a popup is detected we PREFER elements inside that popup, but we no
+        # longer skip fields that live outside it (e.g. the row/grid under the
+        # popup). For those, we fall back to full-document search so we can
+        # still generate XPaths for columns like Date of Session, Time In, etc.
+        label_elem = None
+        label_in_popup = False
+
         if popup_container:
-            print(f"   🎯 Popup mode: Searching ONLY inside popup container")
+            print(f"   🎯 Popup mode: prefer popup container, allow fallback to full document")
             print(f"   Popup container: <{popup_container.tag}> id='{popup_container.get('id', 'N/A')}' class='{popup_container.get('class', 'N/A')}'")
             
-            # Search inside popup only
+            # 1) Try inside popup first
             label_elem = find_element_with_text(tree, label, exact=True, scope=popup_container)
             if label_elem is None:
-                print(f"   → Trying contains match (not exact)...")
+                print(f"   → Trying contains match (not exact) inside popup...")
                 label_elem = find_element_with_text(tree, label, exact=False, scope=popup_container)
             
-            if label_elem is None:
-                print(f"   ❌ Label '{label}' NOT found inside popup - SKIPPING this field")
-                print(f"   → This field will not get an XPath (popup-only mode)")
-                continue  # Skip this field - we only want fields inside popup
-            
-            # Verify it's actually inside popup
-            label_ancestors = []
-            current = label_elem
-            while current is not None:
-                label_ancestors.append(current)
-                if current == popup_container:
-                    break
-                current = current.getparent()
-            
-            if popup_container not in label_ancestors:
-                print(f"   ⚠️  WARNING: Label found but popup container not in ancestors!")
-                print(f"   → This shouldn't happen - skipping field")
-                continue
-            
-            print(f"   ✅ Label found inside popup: <{label_elem.tag}>")
-        else:
-            # No popup, search entire document
-            print(f"   📄 No popup: Searching entire document")
+            if label_elem is not None:
+                # Confirm the label is actually a descendant of the popup
+                current = label_elem
+                while current is not None:
+                    if current == popup_container:
+                        label_in_popup = True
+                        break
+                    current = current.getparent()
+                
+                if not label_in_popup:
+                    print(f"   ⚠️  WARNING: Label found but popup container not in ancestors - treating as outside popup")
+            else:
+                print(f"   ℹ️  Label '{label}' not found inside popup - will search full document")
+        
+        # 2) If not found in popup (or no popup), search entire document
+        if label_elem is None:
+            print(f"   📄 Searching entire document for label '{label}'")
             label_elem = find_element_with_text(tree, label, exact=True, scope=None)
             if label_elem is None:
                 label_elem = find_element_with_text(tree, label, exact=False, scope=None)
         
         if label_elem is None:
             print(f"   ❌ Could not find label element for '{label}' anywhere in HTML")
+            # Record as a failure unless this label is intentionally ignored
+            if label_norm not in IGNORED_LABELS:
+                failed_fields[label] = "Could not find label element in HTML"
             continue
-        print(f"   ✅ Label found in document: <{label_elem.tag}>")
+        print(f"   ✅ Label found in document: <{label_elem.tag}> (inside popup: {label_in_popup})")
+
+        # GENERIC PATTERN: label element followed immediately by a raw text node
+        # that contains the value (e.g. "PROVIDER NAME:" <br> "WEIDER SHIMON").
+        # In this case there is no dedicated value element, so we build a
+        # text-node XPath that targets the following-sibling text()[1] of the
+        # label element. This is dynamic and works for ANY label with that
+        # structure, not just specific names.
+        tail_raw = (label_elem.tail or "").strip()
+        if tail_raw:
+            tail_lower = tail_raw.lower()
+            expected_lower = value.strip().lower()
+            if expected_lower and expected_lower in tail_lower:
+                print(f"   🎯 Detected label+text pattern for '{label}' (value in label tail)")
+
+                # Build the label selector part
+                label_tag = label_elem.tag
+                label_attrs = dict(label_elem.attrib)
+                label_selector_parts = [label_tag]
+                if 'class' in label_attrs:
+                    label_selector_parts.append(f"[@class='{label_attrs['class']}']")
+                normalized_label = label.strip().rstrip(':')
+                label_selector_parts.append(
+                    f"[contains(normalize-space(.), '{normalized_label}')]"
+                )
+                label_selector = ''.join(label_selector_parts)
+
+                # If we have a popup, scope to it; otherwise use document scope
+                if popup_container:
+                    popup_tag = popup_container.tag
+                    popup_attrs = dict(popup_container.attrib)
+                    popup_selector_parts = [popup_tag]
+                    if 'id' in popup_attrs and popup_attrs['id']:
+                        popup_id = popup_attrs['id']
+                        if any(ch.isdigit() for ch in popup_id) or '_' in popup_id:
+                            parts = popup_id.split('_')
+                            if len(parts) > 1:
+                                prefix = '_'.join(parts[:-1])
+                                popup_selector_parts.append(f"[starts-with(@id, '{prefix}')]")
+                            else:
+                                popup_selector_parts.append(f"[@id='{popup_id}']")
+                        else:
+                            popup_selector_parts.append(f"[@id='{popup_id}']")
+                    elif 'class' in popup_attrs:
+                        first_class = popup_attrs['class'].split()[0] if popup_attrs['class'] else ''
+                        if first_class:
+                            popup_selector_parts.append(f"[contains(@class, '{first_class}')]")
+                    elif 'role' in popup_attrs:
+                        popup_selector_parts.append(f"[@role='{popup_attrs['role']}']")
+
+                    popup_selector = ''.join(popup_selector_parts)
+                    xpath = f"//{popup_selector}//{label_selector}/following-sibling::text()[1]"
+                else:
+                    xpath = f"//{label_selector}/following-sibling::text()[1]"
+
+                # Save XPath without validation
+                xpath_patterns[label] = xpath
+                if label_norm not in IGNORED_LABELS:
+                    successful_count += 1
+                print(f"✅ Generated label+text XPath for '{label}': {xpath}")
+                continue
         
-        # Find value element (scoped to popup if detected)
-        value_elem = find_value_element_near_label(tree, label_elem, value, scope=popup_container)
+        # Find value element:
+        # - If label is inside popup, search inside popup (old behavior).
+        # - If label is outside popup (grid row), search whole document.
+        value_scope = popup_container if label_in_popup else None
+        value_elem = find_value_element_near_label(tree, label_elem, value, scope=value_scope)
+        
+        # Generic fallback: sometimes a label text appears inside the popup
+        # (e.g. in a long narrative) but the actual value we care about lives
+        # only in the grid row (outside popup). In that case, if we fail to
+        # find a value INSIDE the popup, we fall back to a full‑document
+        # search and treat it as a non‑popup/grid field.
+        if value_elem is None and popup_container and label_in_popup:
+            print(f"   ⚠️  Value for '{label}' not found inside popup - falling back to full document search")
+            label_in_popup = False
+            value_scope = None
+            value_elem = find_value_element_near_label(tree, label_elem, value, scope=value_scope)
         
         if value_elem is None:
             print(f"❌ Could not find value element for '{label}'")
+            if label_norm not in IGNORED_LABELS:
+                failed_fields[label] = "Could not find value element near label in HTML"
             continue
         
         # Analyze relationship
@@ -1088,31 +1265,37 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
         
         if not relationship:
             print(f"❌ Could not determine relationship for '{label}'")
+            if label_norm not in IGNORED_LABELS:
+                failed_fields[label] = "Could not determine structural relationship between label and value"
             continue
         
-        # Build XPath pattern (with actual label, not {{LABEL}} placeholder)
-        label_tag = label_elem.tag
-        label_attrs = dict(label_elem.attrib)
-        
-        # Build the label selector part
-        label_selector_parts = [label_tag]
-        
-        # Add most stable attribute available (priority order)
-        if 'class' in label_attrs:
-            label_selector_parts.append(f"[@class='{label_attrs['class']}']")
-        
-        # Use actual label text (not placeholder)
-        # Use normalized contains() so labels like "Location of Service:" match
-        # the logical label "Location of Service" that we store in the DB.
-        normalized_label = label.strip().rstrip(':')
-        label_selector_parts.append(
-            f"[contains(normalize-space(.), '{normalized_label}')]"
-        )
-        
-        label_selector = ''.join(label_selector_parts)
-        
-        # If popup was detected, scope the XPath to the popup container
-        if popup_container:
+        # Decide how to build the final XPath:
+        # - If the field is INSIDE the popup: scope to popup + use label relationship (old behavior).
+        # - If the field is OUTSIDE the popup (row/grid): build a row‑relative XPath
+        #   based on the value element only, to be evaluated from the clicked <tr>.
+        # - If there is no popup at all: fall back to the original document‑level pattern.
+        if popup_container and label_in_popup:
+            # Build XPath pattern (with actual label, not {{LABEL}} placeholder)
+            label_tag = label_elem.tag
+            label_attrs = dict(label_elem.attrib)
+            
+            # Build the label selector part
+            label_selector_parts = [label_tag]
+            
+            # Add most stable attribute available (priority order)
+            if 'class' in label_attrs:
+                label_selector_parts.append(f"[@class='{label_attrs['class']}']")
+            
+            # Use actual label text (not placeholder)
+            # Use normalized contains() so labels like "Location of Service:" match
+            # the logical label "Location of Service" that we store in the DB.
+            normalized_label = label.strip().rstrip(':')
+            label_selector_parts.append(
+                f"[contains(normalize-space(.), '{normalized_label}')]"
+            )
+            
+            label_selector = ''.join(label_selector_parts)
+            
             # Build popup container selector
             popup_tag = popup_container.tag
             popup_attrs = dict(popup_container.attrib)
@@ -1145,12 +1328,30 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
             # Scope XPath to popup: //popup//label/relationship
             xpath = f"//{popup_selector}//{label_selector}/{relationship}"
             print(f"🎯 Popup-scoped XPath generated")
+        elif popup_container and not label_in_popup:
+            # Row/grid field: build a row‑relative XPath, to be evaluated with
+            # the clicked <tr> as the context node in the extension.
+            xpath = build_row_relative_xpath(value_elem)
+            print(f"🧮 Row-scoped XPath generated: {xpath}")
         else:
-            # Normal XPath (existing behavior)
-           xpath = f"//{label_selector}/{relationship}"
+            # No popup at all: use original document‑level pattern
+            label_tag = label_elem.tag
+            label_attrs = dict(label_elem.attrib)
+            label_selector_parts = [label_tag]
+            if 'class' in label_attrs:
+                label_selector_parts.append(f"[@class='{label_attrs['class']}']")
+            normalized_label = label.strip().rstrip(':')
+            label_selector_parts.append(
+                f"[contains(normalize-space(.), '{normalized_label}')]"
+            )
+            label_selector = ''.join(label_selector_parts)
+            xpath = f"//{label_selector}/{relationship}"
         
+        # Save XPath without validation
         xpath_patterns[label] = xpath
-        successful_count += 1
+        # Only count non-ignored labels
+        if label_norm not in IGNORED_LABELS:
+            successful_count += 1
         print(f"✅ Generated XPath for '{label}': {xpath}")
     
     if successful_count == 0:
@@ -1160,10 +1361,12 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     print(f"\n✅ Successfully generated {successful_count}/{len(valid_fields)} XPath patterns")
     
     # Return XPath patterns along with popup info
-    result = {
+    result: Dict[str, Any] = {
         'xpath_patterns': xpath_patterns,
         'is_popup': popup_container is not None,
-        'popup_root_selector': generate_popup_css_selector(popup_container) if popup_container else None
+        'popup_root_selector': generate_popup_css_selector(popup_container) if popup_container else None,
+        'total_fields': total_fields,
+        'successful_fields': successful_count,
     }
     
     if popup_container:
