@@ -425,8 +425,7 @@ Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - 
                         "content": prompt
                     }
                 ],
-                max_tokens=1000,
-                temperature=0.7
+                max_completion_tokens=1000
             )
             
             ai_content = response.choices[0].message.content

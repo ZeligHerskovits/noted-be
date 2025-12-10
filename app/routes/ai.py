@@ -191,7 +191,7 @@ async def process_chunk_async(chunk: str, prompt_template: str, field_instructio
                     {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and return it in the specified JSON format."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=4000
+                max_completion_tokens=4000
             )
         )
 
@@ -547,7 +547,7 @@ HTML CONTENT: {html_content_for_gpt}"""
                         {"role": "system", "content": "You are a helpful assistant that analyzes EMR forms. Extract information accurately from the provided HTML content and list each field with its value and label. CRITICAL: ALWAYS include the label for every field, even when the value is 'Empty' or 'Not found'. The format must be: FieldName: Value (label: ActualLabelFromHTML)."},
                         {"role": "user", "content": prompt}
                     ],
-                    max_tokens=4000
+                    max_completion_tokens=4000
                 )
                 result = response.choices[0].message.content
                 debug("=== DEBUG: AI Response: {} ===")
