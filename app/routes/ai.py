@@ -284,8 +284,8 @@ async def generate_response_emr_type(
         raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
     
     # Check if xpath_pattern exists
-    if not emr.xpath_pattern:
-        raise HTTPException(status_code=400, detail="XPath pattern not found for this EMR type. Please re-analyze the EMR type.")
+    # if not emr.xpath_pattern:
+    #     raise HTTPException(status_code=400, detail="XPath pattern not found for this EMR type. Please re-analyze the EMR type.")
 
     # Check if all results have been processed (no more "found" or "not found" statuses)
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
