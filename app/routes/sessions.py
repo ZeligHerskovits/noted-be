@@ -418,14 +418,15 @@ Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - 
             client = OpenAI(api_key=openai_api_key)
             
             response = client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                max_completion_tokens=1000
+                max_tokens=4000,
+                temperature=0.7
             )
             
             ai_content = response.choices[0].message.content
