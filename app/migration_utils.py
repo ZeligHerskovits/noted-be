@@ -216,6 +216,7 @@ class AutoMigrationManager:
             'BOOLEAN': 'Boolean',
             'DATETIME': 'DateTime',
             'DATE': 'Date',
+            'TIME': 'Time',
             'FLOAT': 'Float',
             'DECIMAL': 'Numeric',
             'JSON': 'JSON',

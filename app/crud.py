@@ -747,7 +747,7 @@ def create_session(db: Session, user_id: UUID, **session_data):
     from sqlalchemy import text
     
     # Get all existing columns and their types from sessions table
-    result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'sessions'"))
+    result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'sessions'"))
     columns_info = {row[0]: row[1] for row in result.fetchall()}
     existing_columns = set(columns_info.keys())
     
@@ -757,20 +757,22 @@ def create_session(db: Session, user_id: UUID, **session_data):
     # Handle date/time conversion
     for key, value in valid_data.items():
         col_type = columns_info.get(key)
-        if col_type in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+        if col_type in ['timestamp without time zone', 'timestamp with time zone', 'date', 'time without time zone', 'time with time zone']:
             if value == '' or value == 'None' or value is None:
                 valid_data[key] = None
             elif isinstance(value, str) and value:
-                # Try to parse common date formats
+                # Try to parse common date/time formats
                 try:
                     from dateutil import parser
-                    parsed_date = parser.parse(value)
+                    parsed_dt = parser.parse(value)
                     if col_type == 'date':
-                        valid_data[key] = parsed_date.date()
+                        valid_data[key] = parsed_dt.date()
+                    elif col_type in ['time without time zone', 'time with time zone']:
+                        valid_data[key] = parsed_dt.time()
                     else:
-                        valid_data[key] = parsed_date
+                        valid_data[key] = parsed_dt
                 except:
-                    valid_data[key] = None  # Invalid date, set to None
+                    valid_data[key] = None  # Invalid date/time, set to None
     
     if not valid_data:
         raise Exception("No valid fields to insert")
@@ -916,7 +918,7 @@ def update_session(db: Session, session_id: UUID, **session_data):
             transformed_data[key] = value
     
     # Get all existing columns and their types from sessions table
-    result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'sessions'"))
+    result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'sessions'"))
     columns_info = {row[0]: row[1] for row in result.fetchall()}
     existing_columns = set(columns_info.keys())
     
@@ -926,20 +928,22 @@ def update_session(db: Session, session_id: UUID, **session_data):
     # Handle date/time conversion
     for key, value in valid_data.items():
         col_type = columns_info.get(key)
-        if col_type in ['timestamp without time zone', 'timestamp with time zone', 'date']:
+        if col_type in ['timestamp without time zone', 'timestamp with time zone', 'date', 'time without time zone', 'time with time zone']:
             if value == '' or value == 'None' or value is None:
                 valid_data[key] = None
             elif isinstance(value, str) and value:
-                # Try to parse common date formats
+                # Try to parse common date/time formats
                 try:
                     from dateutil import parser
-                    parsed_date = parser.parse(value)
+                    parsed_dt = parser.parse(value)
                     if col_type == 'date':
-                        valid_data[key] = parsed_date.date()
+                        valid_data[key] = parsed_dt.date()
+                    elif col_type in ['time without time zone', 'time with time zone']:
+                        valid_data[key] = parsed_dt.time()
                     else:
-                        valid_data[key] = parsed_date
+                        valid_data[key] = parsed_dt
                 except:
-                    valid_data[key] = None  # Invalid date, set to None
+                    valid_data[key] = None  # Invalid date/time, set to None
     
     # Build the UPDATE query
     if not valid_data:
