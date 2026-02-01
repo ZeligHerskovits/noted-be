@@ -38,7 +38,7 @@ s3 = boto3.client(
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
     region_name=os.getenv("AWS_REGION"),
-    verify=False
+    verify=False,
 )
 
 class GenerateRequest(BaseModel):
@@ -307,7 +307,7 @@ async def generate_response_emr_type(
     debug("=== DEBUG: Generating response for {} confirmed fields ===", len(confirmed_results))
     
     # Build response data using xpath_pattern from emr_type
-    #xpath_patterns = emr.xpath_pattern  # Now a JSON object {label: xpath}
+    xpath_patterns = emr.xpath_pattern  # Now a JSON object {label: xpath}
     
     #if not xpath_patterns:
        # raise HTTPException(status_code=400, detail="No XPath patterns found for this EMR type. Please re-analyze the EMR type.")
