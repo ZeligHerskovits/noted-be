@@ -142,7 +142,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Add middleware for handling large file uploads
 app.add_middleware(LargeFileUploadMiddleware)
 
@@ -211,5 +210,5 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8001,
         # Increase maximum file upload size to 50MB
-        limit_request_size=50 * 1024 * 1024  # 50MB in bytes
+        # limit_request_size=50 * 1024 * 1024  # 50MB in bytes
     ) 

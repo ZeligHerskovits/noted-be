@@ -731,7 +731,7 @@ def finalize_emr_type(
     )
     
     # If EMR was created from Chrome, create pair and update company
-    if emr_type.created_from_chrome and emr_type.user_id:
+    if emr_type.user_id: #if emr_type.created_from_chrome and emr_type.user_id:
         try:
             user = db.query(User).filter(User.id == emr_type.user_id).first()
             if user:

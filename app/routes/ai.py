@@ -307,10 +307,10 @@ async def generate_response_emr_type(
     debug("=== DEBUG: Generating response for {} confirmed fields ===", len(confirmed_results))
     
     # Build response data using xpath_pattern from emr_type
-    xpath_patterns = emr.xpath_pattern  # Now a JSON object {label: xpath}
+    #xpath_patterns = emr.xpath_pattern  # Now a JSON object {label: xpath}
     
-    if not xpath_patterns:
-        raise HTTPException(status_code=400, detail="No XPath patterns found for this EMR type. Please re-analyze the EMR type.")
+    #if not xpath_patterns:
+       # raise HTTPException(status_code=400, detail="No XPath patterns found for this EMR type. Please re-analyze the EMR type.")
     
     response_data = {}
     
@@ -514,6 +514,8 @@ Find the value associated with the matching on-page label.
 If the HTML label differs (e.g., “Service facility address”) but clearly refers to the same field, extract the value but do not change my key.
 
 IMPORTANT: For each field you extract, also include the actual label from the HTML that you used to find the value. For example, if you asked for "Client" but found "Client Name" in the HTML, include "Client Name" as the label. If you asked for "Appt Date" but found "Appointment Date" in the HTML, include "Appointment Date" as the label.
+
+CRITICAL LABEL RULE: Only include the label if the field was actually found in the HTML (even if the value is empty). If the field was NOT found at all in the HTML, do NOT include a label - just output "FieldName: Not found" without the (label: ...) part.
 
 CRITICAL: Do NOT include any descriptive text, headers, explanations, or summary lines. Do NOT add lines like "The Requested Fields And Their Respective Values Extracted From The Html Content Are As Follows", "Here Are The Extracted Fields And Their Values From The Provided Html Content", "Certainly, Here Is The Extracted Information From The Html Content With The Specified Fields", "Here Is The Extracted Information From The Psychotherapy Emr Form", or ANY similar descriptive text. ONLY return the actual field names and their values and the label in the exact format: FieldName: Value (label: ActualLabelFromHTML)
 

@@ -144,18 +144,28 @@ def send_email_via_msmtp(to_email, subject, body):
             raise
     else:
         # Use smtplib for local development (Windows, Mac, etc.)
+        # Re-read env vars at runtime to ensure .env is loaded
+        smtp_server = os.getenv("SMTP_SERVER")
+        smtp_username = os.getenv("SMTP_USERNAME")
+        smtp_password = os.getenv("SMTP_PASSWORD")
+        from_email = os.getenv("FROM_EMAIL")
+        smtp_port = int(os.getenv("SMTP_PORT", "465"))  # default 465 if not set
+
         msg = MIMEText(body, "html")
         msg["Subject"] = subject
-        msg["From"] = FROM_EMAIL
+        msg["From"] = from_email
         msg["To"] = to_email
         try:
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(FROM_EMAIL, to_email, msg.as_string())
+            debug("Connecting to {}:{} with SSL", smtp_server, smtp_port)
+            server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=30)
+            server.login(smtp_username, smtp_password)
+            server.sendmail(from_email, to_email, msg.as_string())
+            server.quit()
             debug("Email sent via smtplib (local)")
         except Exception as e:
             debug("smtplib error: {}", e)
+            import traceback
+            debug("Traceback: {}", traceback.format_exc())
             raise
 
 def send_otp_email(to_email, otp_code):
