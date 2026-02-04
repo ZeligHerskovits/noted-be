@@ -12,6 +12,8 @@ import traceback
 import json
 import requests
 import os
+import random
+import uuid
 from openai import OpenAI
 from ..crud import parse_instructions_into_sections, get_documentation_method, create_session, get_session, get_sessions_by_user, get_all_sessions, get_sessions_by_emr_type, get_sessions_by_client, update_session, delete_session, get_all_clients
 from ..models import EmrType, UserEMRDocumentationPair, DocumentationMethod
@@ -408,6 +410,15 @@ Section 3: Recommended changes
 
 Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - always use the full "Section X:" format.
 """
+
+        # Encourage wording changes across repeated generations
+        prompt = (
+            f"{prompt}"
+            "\n\nSTYLE VARIATION RULE: Do not reuse the same phrasing as last time; rewrite with different wording and sentence structure while keeping the meaning and the required Section 1/2/3 headers."
+        )
+
+        # Add a tiny per-call variation token to reduce repeated outputs
+        prompt = f"{prompt}\n\nVariationToken: {uuid.uuid4()}"
         
         # Call OpenAI API using the client
         openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -417,6 +428,7 @@ Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - 
         try:
             client = OpenAI(api_key=openai_api_key)
             
+            # Generate multiple variants in a single call and pick one at random (no FE changes needed)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -426,10 +438,15 @@ Do not use just "Methods" or "Progress towards goal" or "Recommended changes" - 
                     }
                 ],
                 max_tokens=4000,
-                temperature=0.7
+                n=3,
+                temperature=1.1,
+                top_p=0.95,
+                presence_penalty=0.4,
+                frequency_penalty=0.2,
             )
             
-            ai_content = response.choices[0].message.content
+            choices = [c.message.content for c in response.choices if c.message and c.message.content]
+            ai_content = random.choice(choices) if choices else ""
             
             # Parse AI response to extract the 3 sections
             methods = ""

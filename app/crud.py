@@ -375,6 +375,9 @@ def delete_emr_type(db: Session, emr_type_id: UUID):
     if not emr_type:
         return False
 
+    # Delete related emr_type_results first (no CASCADE on this FK)
+    delete_all_emr_type_results_by_emr_type(db, emr_type_id)
+
     db.delete(emr_type)
     db.commit()
     return True
