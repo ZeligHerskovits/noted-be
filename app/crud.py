@@ -378,6 +378,14 @@ def delete_emr_type(db: Session, emr_type_id: UUID):
     # Delete related emr_type_results first (no CASCADE on this FK)
     delete_all_emr_type_results_by_emr_type(db, emr_type_id)
 
+    # Remove EMR type name from all Company.emr arrays
+    companies = db.query(Company).filter(Company.emr.isnot(None)).all()
+    for company in companies:
+        if emr_type.name in company.emr:
+            company.emr.remove(emr_type.name)
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(company, "emr")
+
     db.delete(emr_type)
     db.commit()
     return True
