@@ -506,8 +506,8 @@ IMPORTANT — KEY NAMES
 Use only the exact FieldName strings I provide.
 Do not invent, alter, merge, normalize, or camelCase keys.
 Key names are case-, space-, and punctuation-sensitive.
-If a key is missing, still output the line with the exact FieldName key with value not found.
-If a value is empty, still output the line with the exact FieldName key with value empty.
+If a key is missing, still output the line with the exact FieldName key with value as not found.
+If a value is empty, still output the line with the exact FieldName key with value as empty.
 
 MATCHING RULES
 Find the value associated with the matching on-page label.
