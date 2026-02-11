@@ -79,6 +79,97 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
         Popup container element if found, None otherwise
     """
     print(f"\n🔍 Starting dynamic popup detection...")
+    print(f"   📋 Field labels available: {len(field_labels or [])} labels")
+
+    # Decide how many label matches we require. If we only have a small
+    # number of labels, require fewer matches so we don't miss real popups.
+    min_label_matches = 2
+    if field_labels:
+        if len(field_labels) <= 3:
+            min_label_matches = 1
+        if len(field_labels) <= 1:
+            min_label_matches = 0  # With 1 or fewer labels, don't require matches
+
+    def popup_contains_labels(popup: html.HtmlElement, labels: List[str], min_required: int = 2) -> bool:
+        """Return True if popup contains at least min_required label matches."""
+        if not labels:
+            return False
+        labels_found = 0
+        for label in labels[:5]:
+            label_clean = label.lower().strip().rstrip(':').rstrip()
+            if not label_clean:
+                continue
+            try:
+                matches = popup.xpath(
+                    ".//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{label_clean}')]"
+                )
+            except Exception:
+                matches = []
+            if matches:
+                labels_found += 1
+            if labels_found >= min_required:
+                return True
+        return False
+    
+    # FAST PATH: Look for VISIBLE popups first (those with strong visibility indicators)
+    # These are high-confidence popups that don't need label matching to confirm
+    print(f"   🚀 FAST PATH: Scanning for visible popup indicators...")
+    try:
+        # Find ALL elements with "modal" or "popup" class
+        all_modal_elements = []
+        modal_patterns = [
+            "//div[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'modal')]",
+            "//div[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'popup')]",
+        ]
+        for pattern in modal_patterns:
+            try:
+                matches = tree.xpath(pattern)
+                all_modal_elements.extend(matches)
+            except:
+                continue
+        
+        # Remove duplicates
+        seen_ids = set()
+        unique_modals = []
+        for elem in all_modal_elements:
+            elem_id = id(elem)
+            if elem_id not in seen_ids:
+                seen_ids.add(elem_id)
+                unique_modals.append(elem)
+        
+        print(f"      Found {len(unique_modals)} element(s) with 'modal' or 'popup' class")
+        
+        # Check each for VISIBILITY INDICATORS (very strong confidence)
+        for modal_elem in unique_modals:
+            modal_class = (modal_elem.get('class') or '').lower()
+            modal_style = (modal_elem.get('style') or '').lower()
+            modal_id = modal_elem.get('id', 'N/A')
+            
+            # STRONG visibility indicators:
+            # 1. Has 'show' or 'active' class (Bootstrap: 'show' = visible, 'fade' = animation)
+            # 2. Has display:block in style
+            # 3. Has both 'modal' class AND reasonable z-index/position
+            
+            has_show_class = 'show' in modal_class or 'active' in modal_class
+            has_display_block = 'display:block' in modal_style or 'display: block' in modal_style
+            has_modal_class = 'modal' in modal_class
+            
+            # Quick check for position/z-index indicators
+            has_position = 'position:' in modal_style
+            has_z_index = 'z-index' in modal_style
+            
+            is_visible = (has_show_class or has_display_block) and (has_modal_class or has_z_index)
+            
+            if is_visible:
+                print(f"      ✅ VISIBLE MODAL DETECTED: <{modal_elem.tag}> id='{modal_id}'")
+                print(f"         Class: '{modal_elem.get('class', 'N/A')}'")
+                print(f"         Visibility: show_class={has_show_class}, display_block={has_display_block}")
+                return modal_elem  # HIGH CONFIDENCE - return immediately
+            else:
+                print(f"      ℹ️  {modal_id}: 'modal' class found but NOT visible (show={has_show_class}, display_block={has_display_block})")
+    
+    except Exception as e:
+        print(f"      FAST PATH error: {e}")
     
     # Strategy 1: If we have field labels, find popup that contains them (SMARTEST)
     if field_labels and len(field_labels) > 0:
@@ -97,7 +188,8 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
                 except:
                     continue
             
-            # Also check for modal/popup class patterns (but only top-level containers, not nested)
+            # Also check for modal/popup class patterns - BUT must have popup indicators
+            # to avoid false positives on regular page elements with "modal" classes
             class_patterns = [
                 "//div[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'modal')]",
                 "//div[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'popup')]",
@@ -105,7 +197,7 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
             for pattern in class_patterns:
                 try:
                     matches = tree.xpath(pattern)
-                    # Filter to only top-level popup containers (not nested inside other popups)
+                    # Filter to only actual popup overlays (not just divs with "modal" class on regular pages)
                     for match in matches:
                         # Check if this element is not a descendant of another popup we already have
                         is_nested = False
@@ -113,8 +205,27 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
                             if match in existing_popup.xpath(".//*"):
                                 is_nested = True
                                 break
+                        
                         if not is_nested:
-                            all_popups.append(match)
+                            # STRICT CHECK: Verify it's actually a popup overlay, not just a div with "modal" class
+                            match_style = (match.get('style') or '').lower()
+                            match_class = (match.get('class') or '').lower()
+                            
+                            # Must have at least ONE strong popup indicator:
+                            # 1. Fixed/absolute positioning (overlays main content)
+                            # 2. High z-index (appears above main content)
+                            # 3. Backdrop/overlay class (darkens background)
+                            # 4. Has aria-modal="true" (accessibility indicator for popups)
+                            has_fixed_position = 'position:fixed' in match_style or 'position: fixed' in match_style or 'position:absolute' in match_style
+                            has_high_z_index = 'z-index' in match_style and any(f'z-index:{i}' in match_style or f'z-index: {i}' in match_style for i in range(100, 10000))
+                            has_backdrop = 'backdrop' in match_class or 'overlay' in match_class
+                            has_aria_modal = match.get('aria-modal') == 'true'
+                            
+                            # Only add if it has popup indicators (prevents false positives)
+                            if has_fixed_position or has_high_z_index or has_backdrop or has_aria_modal:
+                                all_popups.append(match)
+                            else:
+                                print(f"      Skipping div with 'modal' class (no popup indicators): id='{match.get('id', 'N/A')}'")
                 except:
                     continue
             
@@ -225,8 +336,8 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
                     best_popup = popup
                     print(f"         → New best popup! Score: {labels_found} labels (+ visibility bonus: {score})")
             
-            # If we found a popup with at least 2 labels, check for nested modals inside it
-            if best_popup and best_score >= 2:
+            # If we found a popup with enough labels, check for nested modals inside it
+            if best_popup and best_score >= min_label_matches:
                 print(f"   ✅ Selected popup containing {best_score} field labels: <{best_popup.tag}> id='{best_popup.get('id', 'N/A')}' class='{best_popup.get('class', 'N/A')}'")
                 
                 # Check if there are nested modals/dialogs inside this popup that might contain MORE labels
@@ -262,15 +373,30 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
                         print(f"   ℹ️  Nested modal has same score ({best_nested_score}) - using parent popup")
                 
                 return best_popup
-            elif best_popup and best_score > 0:
-                print(f"   ⚠️  Best popup only contains {best_score} label(s), but using it anyway")
+            elif best_popup and best_score >= min_label_matches:
+                print(f"   ✅ Best popup contains {best_score} label(s) - using it")
                 return best_popup
+            else:
+                print(f"   ⚠️  Best popup only contains {best_score} label(s) - not enough to confirm popup (need at least {min_label_matches})")
+
+            # Fallback: if we have visible popups but no label matches, pick the first visible
+            if best_score == 0 and visible_popups:
+                fallback_popup = visible_popups[0]
+                print(f"   ⚠️  No label matches found - using first visible popup as fallback: <{fallback_popup.tag}> id='{fallback_popup.get('id', 'N/A')}'")
+                return fallback_popup
+            
+            # Additional fallback: if we found a popup but didn't find labels matching,
+            # still return ANY visible popup (visible = high confidence it's the current popup)
+            if visible_popups:
+                print(f"   💡 Using first visible popup (even without label matches): <{visible_popups[0].tag}> id='{visible_popups[0].get('id', 'N/A')}'")
+                return visible_popups[0]
             
             print(f"   ⚠️  No popup found containing the field labels")
         except Exception as e:
             print(f"   Strategy 1 error: {e}")
     
     # Strategy 2: Look for elements with role attributes (fallback)
+    # Only accept if it has popup indicators to avoid false positives
     print(f"   Strategy 2: Checking role attributes...")
     role_patterns = [
         "//*[@role='dialog']",
@@ -279,14 +405,28 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
     for pattern in role_patterns:
         try:
             matches = tree.xpath(pattern)
-            if matches:
-                popup = matches[0]
-                print(f"   ✅ Found by role: <{popup.tag}> role='{popup.get('role')}'")
-                return popup
+            for popup in matches:
+                # Verify it's actually a popup with indicators
+                popup_style = (popup.get('style') or '').lower()
+                has_popup_indicator = (
+                    'position:fixed' in popup_style or 
+                    'position: fixed' in popup_style or
+                    'z-index' in popup_style or
+                    popup.get('aria-modal') == 'true'
+                )
+                if has_popup_indicator:
+                    if field_labels and not popup_contains_labels(popup, field_labels, min_required=min_label_matches):
+                        print(f"   ⚠️  Skipping role element (no label matches): <{popup.tag}> role='{popup.get('role')}'")
+                        continue
+                    print(f"   ✅ Found by role: <{popup.tag}> role='{popup.get('role')}'")
+                    return popup
+                else:
+                    print(f"   ⚠️  Skipping role element (no popup indicators): <{popup.tag}> role='{popup.get('role')}'")
         except:
             continue
     
     # Strategy 3: Look for common popup indicators in class/id (case-insensitive)
+    # STRICT: Must have popup layout indicators to avoid false positives
     print(f"   Strategy 3: Checking class/id patterns...")
     indicator_patterns = [
         "//*[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'modal')]",
@@ -300,76 +440,51 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
     for pattern in indicator_patterns:
         try:
             matches = tree.xpath(pattern)
-            if matches:
-                popup = matches[0]
-                print(f"   ✅ Found by class/id pattern: <{popup.tag}>")
-                return popup
+            for popup in matches:
+                # Verify it's actually a popup overlay (not just a div with "modal" class)
+                popup_style = (popup.get('style') or '').lower()
+                has_fixed_position = 'position:fixed' in popup_style or 'position: fixed' in popup_style or 'position:absolute' in popup_style
+                has_z_index = 'z-index' in popup_style
+                has_aria_modal = popup.get('aria-modal') == 'true'
+                
+                if has_fixed_position or has_z_index or has_aria_modal:
+                    if field_labels and not popup_contains_labels(popup, field_labels, min_required=min_label_matches):
+                        print(f"   ⚠️  Skipping element with modal/popup class (no label matches)")
+                        continue
+                    print(f"   ✅ Found by class/id pattern: <{popup.tag}>")
+                    return popup
+                else:
+                    print(f"   ⚠️  Skipping element with modal/popup class (no popup layout indicators)")
         except:
             continue
     
-    # Strategy 4: If we have field labels, find common ancestor container
-    if field_labels and len(field_labels) > 0:
-        print(f"   Strategy 3: Analyzing field locations to find common container...")
-        try:
-            # Find elements containing the field labels
-            label_elements = []
-            for label in field_labels[:3]:  # Check first 3 labels
-                elem = find_element_with_text(tree, label, exact=False)
-                if elem:
-                    label_elements.append(elem)
-            
-            if len(label_elements) >= 2:
-                # Find common ancestor of label elements
-                # Get ancestors of first label
-                ancestors1 = []
-                current = label_elements[0]
-                while current is not None:
-                    ancestors1.append(current)
-                    current = current.getparent()
-                
-                # Check if other labels share a common ancestor
-                for ancestor in ancestors1:
-                    if ancestor.tag in ['body', 'html']:
-                        continue
-                    
-                    # Check if at least 2 labels are descendants of this ancestor
-                    descendant_count = 0
-                    for label_elem in label_elements:
-                        if label_elem in ancestor.xpath('.//*') or label_elem == ancestor:
-                            descendant_count += 1
-                    
-                    if descendant_count >= 2:
-                        # This might be a popup container
-                        # Check if it's likely a popup (has form-like structure, not main page)
-                        ancestor_text = ancestor.text_content()[:200] if ancestor.text_content() else ""
-                        if len(ancestor_text) < 5000:  # Popups are usually smaller
-                            print(f"   ✅ Found common container by field analysis: <{ancestor.tag}>")
-                            print(f"      Contains {descendant_count} field labels")
-                            return ancestor
-        except Exception as e:
-            print(f"   Strategy 3 error: {e}")
-    
-    # Strategy 5: Look for elements with popup-like styling indicators
-    print(f"   Strategy 5: Checking for popup-like structure...")
+    # Strategy 4: Look for elements with popup-like styling indicators
+    # STRICT: Must have STRONG popup overlay indicators
+    print(f"   Strategy 4: Checking for popup-like structure...")
     try:
-        # Look for divs that might be popups (have z-index, fixed/absolute positioning hints)
-        # This is a fallback - look for containers that are likely popups
+        # Look for divs that are CLEARLY popup overlays (have z-index + fixed positioning)
+        # This prevents false positives on regular page elements
         all_divs = tree.xpath("//div")
         for div in all_divs:
             div_class = div.get('class', '').lower()
             div_id = div.get('id', '').lower()
             div_style = div.get('style', '').lower()
             
-            # Check for popup indicators
+            # Check for STRONG popup indicators
             has_z_index = 'z-index' in div_style
-            has_fixed = 'position:fixed' in div_style or 'position: absolute' in div_style
+            has_fixed = 'position:fixed' in div_style or 'position: fixed' in div_style
+            has_absolute = 'position:absolute' in div_style or 'position: absolute' in div_style
             has_backdrop = 'backdrop' in div_class or 'backdrop' in div_id
             has_modal_like = any(word in div_class or word in div_id 
-                               for word in ['modal', 'popup', 'dialog', 'overlay', 'window', 'panel'])
+                               for word in ['modal', 'popup', 'dialog', 'overlay'])
             
-            # If it has multiple popup indicators, it's likely a popup
-            indicators = sum([has_z_index, has_fixed, has_backdrop, has_modal_like])
-            if indicators >= 2:
+            # STRICT: Must have fixed/absolute positioning AND (z-index OR backdrop OR modal-like class)
+            # This ensures we only detect actual overlays, not regular page content
+            if (has_fixed or has_absolute) and (has_z_index or has_backdrop or has_modal_like):
+                if field_labels and not popup_contains_labels(div, field_labels, min_required=min_label_matches):
+                    print(f"   ⚠️  Skipping structure candidate (no label matches)")
+                    continue
+                indicators = sum([has_z_index, has_fixed, has_absolute, has_backdrop, has_modal_like])
                 print(f"   ✅ Found by structure analysis: <{div.tag}> (indicators: {indicators})")
                 return div
     except Exception as e:
@@ -377,6 +492,80 @@ def detect_popup_container(tree: html.HtmlElement, field_labels: Optional[List[s
     
     print(f"   ❌ No popup detected with dynamic strategies")
     return None
+
+
+def sanitize_api_name(field_name: str) -> str:
+    """
+    Generate api_name from field label (same logic as backend migration_utils).
+    Converts "interventions used" → "interventions_used"
+    """
+    # Special case: client id fields
+    field_name_lower = field_name.lower()
+    if field_name_lower in ['clientid', 'client id']:
+        return 'client__id'
+    
+    # Replace spaces and special characters with underscores
+    sanitized = field_name.replace(' ', '_').replace('-', '_').replace('.', '_')
+    # Remove any other non-alphanumeric characters except underscores
+    sanitized = ''.join(c for c in sanitized if c.isalnum() or c == '_')
+    # Ensure it starts with a letter or underscore
+    if sanitized and not sanitized[0].isalpha() and sanitized[0] != '_':
+        sanitized = 'f_' + sanitized
+    return sanitized.lower()
+
+
+def generate_selector_fallbacks(label: str, primary_xpath: str, popup_container: Optional[html.HtmlElement] = None) -> List[Dict[str, str]]:
+    """
+    Generate 2-3 fallback selectors for a field.
+    Creates alternative XPath/CSS patterns for robustness.
+    
+    Args:
+        label: Field label text
+        primary_xpath: The primary XPath selector
+        popup_container: Optional popup container element
+    
+    Returns:
+        List of fallback selector dicts with 'type' and 'selector' keys
+    """
+    fallbacks = []
+    normalized_label = label.strip().rstrip(':')
+    
+    # Fallback 1: Simpler XPath without class constraints (more flexible)
+    if '[' in primary_xpath and '@class' in primary_xpath:
+        # Remove class constraint for flexibility
+        simple_xpath = primary_xpath
+        # Remove [@class='...'] patterns
+        import re
+        simple_xpath = re.sub(r"\[@class='[^']*'\]", "", simple_xpath)
+        if simple_xpath != primary_xpath:
+            fallbacks.append({'type': 'xpath', 'selector': simple_xpath})
+    
+    # Fallback 2: Text-based XPath (most flexible, but less specific)
+    label_words = [w for w in normalized_label.split() if len(w) > 3]
+    if label_words:
+        # XPath that finds any element with label text and gets following value element
+        text_xpath = f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{label_words[0].lower()}')]"
+        if popup_container:
+            popup_selector_simple = popup_container.tag
+            if popup_container.get('role'):
+                popup_selector_simple = f"{popup_container.tag}[@role='{popup_container.get('role')}']"
+            text_xpath = f"//{popup_selector_simple}{text_xpath}"
+        
+        text_xpath += "/following-sibling::*[1]"
+        fallbacks.append({'type': 'xpath', 'selector': text_xpath})
+    
+    # Fallback 3: CSS selector if we can convert (experimental)
+    # Only add if we have a simple enough structure
+    if len(fallbacks) < 2:
+        # Simple CSS fallback based on label text as data attribute or class
+        label_class = normalized_label.lower().replace(' ', '-')
+        css_selector = f".field-{label_class}, [data-field='{label_class}']"
+        if popup_container and popup_container.get('class'):
+            first_class = popup_container.get('class').split()[0]
+            css_selector = f".{first_class} {css_selector}"
+        fallbacks.append({'type': 'css', 'selector': css_selector})
+    
+    return fallbacks[:2]  # Return max 2 fallbacks
 
 
 def generate_popup_css_selector(popup_container: html.HtmlElement) -> str:
@@ -951,8 +1140,9 @@ def generate_xpath_from_html(raw_html: str, field_data: Dict[str, Dict[str, str]
         print(f"Error parsing HTML: {e}")
         return None
     
-    # Detect popup/modal container
-    popup_container = detect_popup_container(tree)
+    # Detect popup/modal container (use field labels for smarter detection)
+    field_labels = [data.get('label', '') for data in field_data.values() if data.get('label')]
+    popup_container = detect_popup_container(tree, field_labels=field_labels)
     if popup_container:
         print(f"🎯 Popup detected! Scoping XPath generation to popup container only.")
     else:
@@ -1056,8 +1246,10 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     
     Args:
         raw_html: The complete HTML content
-        field_data: Dict of {field_key: {"value": "...", "label": "..."}}" 
+        field_data: Dict of {field_key: {"value": "...", "label": "...", "key": "...", "api_name": "..."}}" 
                    Only include fields where value is not "Not found" or "Empty"
+                   "key" is the actual field key (identifier), "label" is the display text
+               "api_name" is the resolved api_name from EMRTypeField mapping (if available)
     
     Returns:
         Dict with:
@@ -1099,15 +1291,21 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     print(f"{'='*60}\n")
     
     # Filter out fields without valid values
-    valid_fields: Dict[str, str] = {}
-    for data in field_data.values():
+    valid_fields: Dict[str, Dict[str, str]] = {}
+    for field_key, data in field_data.items():
         value = data.get('value')
         label = data.get('label')
+        key = data.get('key', field_key)  # Use provided key or fallback to field_key
+        api_name = data.get('api_name')
         if not value or not label:
             continue
         if value.lower() in ['not found', 'empty', '']:
             continue
-        valid_fields[label] = value
+        valid_fields[label] = {
+            'value': value,
+            'key': key,  # Preserve the actual key
+            'api_name': api_name  # Preserve resolved api_name if provided
+        }
     
     if not valid_fields:
         return None
@@ -1124,9 +1322,11 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
         if normalize_text(label).rstrip(':') not in IGNORED_LABELS
     )
     
-    for idx, (label, value) in enumerate(valid_fields.items(), 1):
+    for idx, (label, field_info) in enumerate(valid_fields.items(), 1):
+        value = field_info['value']
+        field_key = field_info['key']
         print(f"\n{'='*70}")
-        print(f"--- Field {idx}/{len(valid_fields)}: '{label}' = '{value}' ---")
+        print(f"--- Field {idx}/{len(valid_fields)}: '{label}' (key: {field_key}) = '{value}' ---")
         print(f"{'='*70}")
         label_norm = normalize_text(label).rstrip(':')
         
@@ -1360,9 +1560,25 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     
     print(f"\n✅ Successfully generated {successful_count}/{len(valid_fields)} XPath patterns")
     
-    # Return XPath patterns along with popup info
+    # Build per-field data with fallbacks for new schema
+    fields = []
+    for label, xpath in xpath_patterns.items():
+        # Get the actual key from valid_fields
+        field_key = valid_fields.get(label, {}).get('key', label)
+        field_api_name = valid_fields.get(label, {}).get('api_name')
+        field_data = {
+            'field_key': field_key,  # Use actual key, not label
+            'api_name': field_api_name or sanitize_api_name(field_key),  # Use mapped api_name or fallback
+            'selector_type': 'xpath',
+            'primary_selector': xpath,
+            'selector_fallbacks': generate_selector_fallbacks(label, xpath, popup_container)
+        }
+        fields.append(field_data)
+    
+    # Return per-field data with popup info
     result: Dict[str, Any] = {
-        'xpath_patterns': xpath_patterns,
+        'fields': fields,  # New: array of per-field data
+        'xpath_patterns': xpath_patterns,  # Keep for backward compatibility
         'is_popup': popup_container is not None,
         'popup_root_selector': generate_popup_css_selector(popup_container) if popup_container else None,
         'total_fields': total_fields,

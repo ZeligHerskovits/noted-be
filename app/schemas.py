@@ -217,9 +217,12 @@ class EmrTypeUpdate(BaseModel):
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
     emr_url: Optional[str] = None
-    xpath_pattern: Optional[Dict[str, str]] = None  # JSON object mapping labels to XPath patterns
+    xpath_pattern: Optional[Dict[str, Any]] = None  # JSON object with fields array, is_popup, popup_root_selector
     is_popup: Optional[bool] = None  # Flag to indicate if EMR type uses popup
     popup_root_selector: Optional[str] = None  # CSS selector for popup container
+    field_key: Optional[str] = None  # Raw field label text
+    selector_type: Optional[str] = None  # 'xpath' or 'css'
+    selector_fallbacks: Optional[List[Any]] = None  # Fallback selector array (list of dicts)
 
 class EmrTypeResponse(BaseModel):
     id: UUID
@@ -236,9 +239,12 @@ class EmrTypeResponse(BaseModel):
     progress_towards_goal_instructions: Optional[str] = None
     recommended_changes_instructions: Optional[str] = None
     emr_url: Optional[str] = None
-    xpath_pattern: Optional[Dict[str, str]] = None  # JSON object mapping labels to XPath patterns
+    xpath_pattern: Optional[Dict[str, Any]] = None  # JSON object with fields array, is_popup, popup_root_selector
     is_popup: Optional[bool] = False  # Flag to indicate if EMR type uses popup
     popup_root_selector: Optional[str] = None  # CSS selector for popup container
+    field_key: Optional[str] = None  # Raw field label text
+    selector_type: Optional[str] = None  # 'xpath' or 'css'
+    selector_fallbacks: Optional[List[Any]] = None  # Fallback selector array (list of dicts)
     created_from_chrome: Optional[bool] = False
     user_id: Optional[UUID] = None
 
@@ -407,6 +413,7 @@ class ManualFieldResponse(BaseModel):
     id: UUID
     name: str
     emr_type_id: UUID
+    type: Optional[str] = None
     created: datetime
     updated: datetime
     

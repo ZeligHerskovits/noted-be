@@ -283,10 +283,6 @@ async def generate_response_emr_type(
     if emr.status in ["draft", "processing"]:
         raise HTTPException(status_code=400, detail="EMR type must be analyzed first before generating response. Please run the Analyze button first.")
     
-    # Check if xpath_pattern exists
-    # if not emr.xpath_pattern:
-    #     raise HTTPException(status_code=400, detail="XPath pattern not found for this EMR type. Please re-analyze the EMR type.")
-
     # Check if all results have been processed (no more "found" or "not found" statuses)
     results = get_emr_type_results_by_emr_type(db, emr_type_id)
     unprocessed_results = [result for result in results if result.status in ['found', 'not found']]
@@ -297,8 +293,10 @@ async def generate_response_emr_type(
             status_code=400,
             detail=f"Cannot generate response while there are unprocessed fields with 'found' or 'not found' status. Please review and update the following fields: {', '.join(unprocessed_fields)}"
         )
+    
     if not emr.files or len(emr.files) == 0:
         raise HTTPException(status_code=404, detail="No file found for this EMR type")
+    
     # Get confirmed fields from results table
     confirmed_results = [result for result in results if result.status == "confirmed"]
     if not confirmed_results:
@@ -306,38 +304,21 @@ async def generate_response_emr_type(
     
     debug("=== DEBUG: Generating response for {} confirmed fields ===", len(confirmed_results))
     
-    # Build response data using xpath_pattern from emr_type
-    xpath_patterns = emr.xpath_pattern  # Now a JSON object {label: xpath}
+    # Get the stored response (json_response field) which already has api_names from enhancement during confirmation
+    if emr.json_response:
+        try:
+            enhanced_response_data = json.loads(emr.json_response)
+            debug("=== DEBUG: Using stored response with {} fields ===", len(enhanced_response_data))
+        except:
+            debug("=== DEBUG: Could not parse stored response, building from scratch ===")
+            enhanced_response_data = {}
+    else:
+        debug("=== DEBUG: No stored response found, building from scratch ===")
+        enhanced_response_data = {}
     
-    #if not xpath_patterns:
-       # raise HTTPException(status_code=400, detail="No XPath patterns found for this EMR type. Please re-analyze the EMR type.")
-    
-    response_data = {}
-    
-    for result in confirmed_results:
-        field_key = result.key
-        field_label = result.label
-        
-        # Look up field-specific XPath from JSON object
-        field_xpath = xpath_patterns.get(field_label)
-        
-        if field_xpath:
-            response_data[field_key] = {
-                "source": {
-                    "type": "xpath",
-                    "xpath": field_xpath
-                }
-            }
-            debug("=== DEBUG: Using XPath for field '{}': {} ===", field_key, field_xpath)
-        else:
-            debug("=== DEBUG: No XPath found for field '{}' with label '{}' ===", field_key, field_label)
-    
-    # Enhance the response with api_names
-    enhanced_response_data = enhance_response_with_api_names(response_data, db)
-    
-    # Save the response to the database
-    update_emr_type(db, emr_type_id, json_response=json.dumps(enhanced_response_data, indent=2), status='generated')
-    debug("=== DEBUG: Updated EMR type status to 'Generated' with {} fields ===", len(enhanced_response_data))
+    # Update status to generated
+    update_emr_type(db, emr_type_id, status='generated')
+    debug("=== DEBUG: Updated EMR type status to 'Generated' ===")
     
     return {
         "message": "Response generated successfully",
@@ -506,8 +487,8 @@ IMPORTANT — KEY NAMES
 Use only the exact FieldName strings I provide.
 Do not invent, alter, merge, normalize, or camelCase keys.
 Key names are case-, space-, and punctuation-sensitive.
-If a key is missing, still output the line with the exact FieldName key with value as not found.
-If a value is empty, still output the line with the exact FieldName key with value as empty.
+If a key is missing, still output the line with the exact FieldName key and the value with the word 'Not found'.
+If a value is empty, still output the line with the exact FieldName key and the value with the word 'Empty'.
 
 MATCHING RULES
 Find the value associated with the matching on-page label.
@@ -793,7 +774,15 @@ async def save_selected_chunk(
                     
                     # Prepare field data for XPath generation (only fields with actual values)
                     field_data_for_xpath = {}
-                    for field, field_data in field_values.items():
+                    field_mapping = None
+                    try:
+                        from ..models import EMRTypeField
+                        from ..crud import _create_field_mapping, _find_matching_api_name
+                        emr_fields = db.query(EMRTypeField).all()
+                        field_mapping = _create_field_mapping(emr_fields)
+                    except Exception as mapping_error:
+                        debug("=== DEBUG: Could not build EMR field mapping for api_name: {} ===", str(mapping_error))
+                    for field_key, field_data in field_values.items():
                         values_list = list(field_data['values'])
                         label = field_data['label']
                         
@@ -802,9 +791,19 @@ async def save_selected_chunk(
                             if value.lower() in ['not found', 'empty', ''] or \
                                not label or label.lower() in ['not found', 'empty', '']:
                                 continue
-                            field_data_for_xpath[field] = {
+                            # Store both key and label - xpath generator will use key as field_key
+                            api_name = None
+                            if field_mapping is not None:
+                                try:
+                                    api_name = _find_matching_api_name(field_key, field_mapping)
+                                except Exception as api_name_error:
+                                    debug("=== DEBUG: Could not resolve api_name for {}: {} ===", field_key, str(api_name_error))
+
+                            field_data_for_xpath[field_key] = {
                                 'value': value,
-                                'label': label
+                                'label': label,
+                                'key': field_key,  # Pass the actual key (not label)
+                                'api_name': api_name  # Resolved api_name from EMRTypeField mapping
                             }
                             break
                     
@@ -813,36 +812,70 @@ async def save_selected_chunk(
                         debug("=== DEBUG: Generating individual XPath patterns for {} fields ===", len(field_data_for_xpath))
                         xpath_result = generate_xpath_for_all_fields(raw_html, field_data_for_xpath)
                         
-                        if xpath_result and xpath_result.get('xpath_patterns') is not None:
-                            new_xpath_patterns = xpath_result.get('xpath_patterns') or {}
+                        if xpath_result and xpath_result.get('fields') is not None:
+                            # NEW: Use fields array with fallbacks
+                            fields_array = xpath_result.get('fields') or []
                             is_popup = xpath_result.get('is_popup', False)
                             popup_root_selector = xpath_result.get('popup_root_selector')
                             
-                            debug("=== DEBUG: Generated {} new XPath patterns ===", len(new_xpath_patterns))
+                            debug("=== DEBUG: Generated {} fields with fallbacks ===", len(fields_array))
                             debug("=== DEBUG: Popup detected: {}, Selector: {} ===", is_popup, popup_root_selector)
                             
-                            # Always save generated XPaths (no validation check)
-                            existing_xpaths = emr_type.xpath_pattern or {}
-                            if isinstance(existing_xpaths, str):
-                                # Handle legacy string format
-                                existing_xpaths = {}
+                            # Store the entire fields array in xpath_patterns JSONB column
+                            # This includes: field_key, selector_type, primary_selector, selector_fallbacks
+                            xpath_patterns_data = {
+                                'fields': fields_array,
+                                'is_popup': is_popup,
+                                'popup_root_selector': popup_root_selector
+                            }
                             
-                            # Merge: new patterns override existing ones for same labels
-                            merged_xpaths = {**existing_xpaths, **new_xpath_patterns}
+                            debug("=== DEBUG: Storing {} fields with fallbacks to database ===", len(fields_array))
                             
-                            debug("=== DEBUG: Merged XPaths: {} existing + {} new = {} total ===", 
-                                  len(existing_xpaths), len(new_xpath_patterns), len(merged_xpaths))
+                            # Merge with existing xpath_pattern (don't overwrite, add/update only)
+                            merged_fields = fields_array  # Start with new fields
+                            if emr_type.xpath_pattern:
+                                try:
+                                    existing_pattern = emr_type.xpath_pattern
+                                    if isinstance(existing_pattern, str):
+                                        existing_pattern = json.loads(existing_pattern)
+                                    
+                                    # Get existing fields by field_key
+                                    existing_fields = {f.get('field_key'): f for f in existing_pattern.get('fields', [])}
+                                    
+                                    # For each new field, check if key exists and override, otherwise add
+                                    for new_field in fields_array:
+                                        existing_fields[new_field.get('field_key')] = new_field
+                                    
+                                    # Convert dict back to list
+                                    merged_fields = list(existing_fields.values())
+                                    debug("=== DEBUG: Merged with existing fields, total now: {} ===", len(merged_fields))
+                                except Exception as merge_error:
+                                    debug("=== DEBUG: Could not merge with existing pattern, using new fields only: {} ===", str(merge_error))
+                                    merged_fields = fields_array
                             
-                            # Update EMR type with merged xpath_patterns, popup info, and status
+                            # Build final structure with merged fields
+                            xpath_patterns_data = {
+                                'fields': merged_fields,
+                                'is_popup': is_popup,
+                                'popup_root_selector': popup_root_selector
+                            }
+                            
+                            # Chrome needs the FULL structure with fields array, popup info, and all fallbacks
+                            # Just use the entire xpath_patterns_data as the response
+                            enhanced_response_for_db = xpath_patterns_data
+                            debug("=== DEBUG: Response with full structure (fields, popup, fallbacks) for Chrome ===")
+                            
+                            # Update EMR type with new format
                             update_emr_type(
                                 db, 
                                 emr_type_id, 
-                                xpath_pattern=merged_xpaths, 
+                                xpath_pattern=xpath_patterns_data,
+                                json_response=json.dumps(enhanced_response_for_db, indent=2),
                                 is_popup=is_popup,
                                 popup_root_selector=popup_root_selector,
                                 status='analyzed'
                             )
-                            debug("=== DEBUG: Updated EMR type with merged XPath patterns, popup info, and status 'analyzed' ===")
+                            debug("=== DEBUG: Updated EMR type with per-field selectors, fallbacks, popup info, and api_names ===")
                         else:
                             debug("=== DEBUG: Could not generate XPath patterns, updating status only ===")
                             update_emr_type(db, emr_type_id, status='analyzed')
