@@ -733,7 +733,19 @@ def find_value_element_near_label(tree: html.HtmlElement, label_elem: html.HtmlE
     all_candidates = []       # global contains/exact, regardless of distance
     
     for val_elem in all_elements:
+        # For Salesforce Lightning forms, check both text_content AND input value attributes
         elem_text = val_elem.text_content().strip()
+        
+        # Also check input/textarea value attributes (for form fields)
+        if val_elem.tag in ['input', 'textarea']:
+            input_value = val_elem.get('value', '').strip()
+            if input_value:
+                elem_text = input_value
+        elif val_elem.tag == 'lightning-input' or val_elem.tag == 'lightning-combobox':
+            # Check data-value attribute for Lightning components
+            data_value = val_elem.get('data-value', '').strip()
+            if data_value:
+                elem_text = data_value
         
         if not elem_text:  # Skip empty elements
             continue
@@ -918,15 +930,21 @@ def analyze_element_relationship(tree: html.HtmlElement, label_elem: html.HtmlEl
             
             if value_elem in descendants:
                 # Found common ancestor - build descendant part with best attribute
-                # Priority: data-testid > data-test-id > id > class
+                # Priority: data-testid > data-test-id > class > id (avoid dynamic IDs)
                 if 'data-testid' in value_attrs:
                     descendant_part = f"//{value_tag}[@data-testid='{value_attrs['data-testid']}']"
                 elif 'data-test-id' in value_attrs:
                     descendant_part = f"//{value_tag}[@data-test-id='{value_attrs['data-test-id']}']"
-                elif 'id' in value_attrs:
-                    descendant_part = f"//{value_tag}[@id='{value_attrs['id']}']"
                 elif 'class' in value_attrs:
                     descendant_part = f"//{value_tag}[@class='{value_attrs['class']}']"
+                elif 'id' in value_attrs:
+                    elem_id = value_attrs['id']
+                    # Only use ID if it looks stable (no numbers, not combobox-input-*)
+                    if not any(c.isdigit() for c in elem_id) and 'combobox-input' not in elem_id and 'input-' not in elem_id:
+                        descendant_part = f"//{value_tag}[@id='{elem_id}']"
+                    else:
+                        # Dynamic ID detected, use tag + position
+                        descendant_part = f"//{value_tag}[1]"
                 else:
                     descendant_part = f"//{value_tag}"
                 
@@ -961,12 +979,16 @@ def build_row_relative_xpath(value_elem: html.HtmlElement) -> str:
         selector_parts.append(f"[@data-testid='{value_attrs['data-testid']}']")
     elif 'data-test-id' in value_attrs:
         selector_parts.append(f"[@data-test-id='{value_attrs['data-test-id']}']")
-    elif 'id' in value_attrs and value_attrs['id']:
-        selector_parts.append(f"[@id='{value_attrs['id']}']")
     elif 'class' in value_attrs and value_attrs['class']:
         # Use first class and match via contains() to be resilient to extra classes
         first_class = value_attrs['class'].split()[0]
         selector_parts.append(f"[contains(@class, '{first_class}')]")
+    elif 'id' in value_attrs and value_attrs['id']:
+        elem_id = value_attrs['id']
+        # Only use ID if it looks stable (no numbers, not combobox-input-*)
+        if not any(c.isdigit() for c in elem_id) and 'combobox-input' not in elem_id and 'input-' not in elem_id:
+            selector_parts.append(f"[@id='{elem_id}']")
+        # Otherwise fall through to positional index
     else:
         # Fallback: use positional index of this cell within its row for stability
         row = value_elem
@@ -1291,7 +1313,9 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     print(f"{'='*60}\n")
     
     # Filter out fields without valid values
-    valid_fields: Dict[str, Dict[str, str]] = {}
+    # NOTE: Use (label, field_key) tuple as key to avoid collisions when multiple
+    # fields share the same label (e.g., "Date & Time" for both appt_date and appt_time)
+    valid_fields: Dict[tuple, Dict[str, str]] = {}
     for field_key, data in field_data.items():
         value = data.get('value')
         label = data.get('label')
@@ -1301,7 +1325,9 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
             continue
         if value.lower() in ['not found', 'empty', '']:
             continue
-        valid_fields[label] = {
+        # Use (label, field_key) as unique key to preserve multiple fields with same label
+        unique_key = (label, field_key)
+        valid_fields[unique_key] = {
             'value': value,
             'key': key,  # Preserve the actual key
             'api_name': api_name  # Preserve resolved api_name if provided
@@ -1318,13 +1344,13 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     # e.g. "Client" will never block all_valid from being True.
     total_fields = sum(
         1
-        for label in valid_fields.keys()
+        for (label, _) in valid_fields.keys()
         if normalize_text(label).rstrip(':') not in IGNORED_LABELS
     )
     
-    for idx, (label, field_info) in enumerate(valid_fields.items(), 1):
+    for idx, ((label, field_key_from_tuple), field_info) in enumerate(valid_fields.items(), 1):
         value = field_info['value']
-        field_key = field_info['key']
+        field_key = field_info['key']  # Use the actual key from field_info, not the tuple
         print(f"\n{'='*70}")
         print(f"--- Field {idx}/{len(valid_fields)}: '{label}' (key: {field_key}) = '{value}' ---")
         print(f"{'='*70}")
@@ -1431,10 +1457,11 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
                     xpath = f"//{label_selector}/following-sibling::text()[1]"
 
                 # Save XPath without validation
-                xpath_patterns[label] = xpath
+                # Key by field_key to preserve multiple fields with same label
+                xpath_patterns[field_key] = {'label': label, 'xpath': xpath}
                 if label_norm not in IGNORED_LABELS:
                     successful_count += 1
-                print(f"✅ Generated label+text XPath for '{label}': {xpath}")
+                print(f"✅ Generated label+text XPath for '{label}' (key: {field_key}): {xpath}")
                 continue
         
         # Find value element:
@@ -1459,6 +1486,28 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
             if label_norm not in IGNORED_LABELS:
                 failed_fields[label] = "Could not find value element near label in HTML"
             continue
+        
+        # SALESFORCE FIX: If we found an input element with a dynamic ID, search for a nearby
+        # display element (span) that shows the actual visible value. This avoids:
+        # 1. Dynamic IDs that change on every page load
+        # 2. Hidden input values vs visible display text
+        # 3. Extra text like "Clear Selection" button
+        if value_elem.tag == 'input':
+            elem_id = value_elem.get('id', '')
+            # Check if ID looks dynamic (contains numbers or common dynamic patterns)
+            if elem_id and (any(c.isdigit() for c in elem_id) or 'combobox-input' in elem_id):
+                print(f"   🔄 Found input with dynamic ID '{elem_id}', searching for stable display element...")
+                # Search for a nearby span with the value (common in Salesforce Lightning lookups/comboboxes)
+                parent = value_elem.getparent()
+                if parent is not None:
+                    # Look for span with slds-truncate or similar display classes
+                    display_candidates = parent.xpath(".//span[@class='slds-truncate' or contains(@class, 'slds-combobox__input-value')]")
+                    for candidate in display_candidates:
+                        candidate_text = candidate.text_content().strip()
+                        if value.lower() in candidate_text.lower():
+                            print(f"   ✅ Found stable display element: <{candidate.tag}> class='{candidate.get('class')}'")
+                            value_elem = candidate
+                            break
         
         # Analyze relationship
         relationship = analyze_element_relationship(tree, label_elem, value_elem)
@@ -1548,11 +1597,12 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
             xpath = f"//{label_selector}/{relationship}"
         
         # Save XPath without validation
-        xpath_patterns[label] = xpath
+        # Key by field_key to preserve multiple fields with same label
+        xpath_patterns[field_key] = {'label': label, 'xpath': xpath}
         # Only count non-ignored labels
         if label_norm not in IGNORED_LABELS:
             successful_count += 1
-        print(f"✅ Generated XPath for '{label}': {xpath}")
+        print(f"✅ Generated XPath for '{label}' (key: {field_key}): {xpath}")
     
     if successful_count == 0:
         print(f"\n❌ Could not generate any XPath patterns")
@@ -1562,10 +1612,14 @@ def generate_xpath_for_all_fields(raw_html: str, field_data: Dict[str, Dict[str,
     
     # Build per-field data with fallbacks for new schema
     fields = []
-    for label, xpath in xpath_patterns.items():
-        # Get the actual key from valid_fields
-        field_key = valid_fields.get(label, {}).get('key', label)
-        field_api_name = valid_fields.get(label, {}).get('api_name')
+    for field_key, xpath_data in xpath_patterns.items():
+        # xpath_data is now a dict with 'label' and 'xpath' keys
+        label = xpath_data['label']
+        xpath = xpath_data['xpath']
+        # Get api_name from valid_fields using the (label, field_key) tuple key
+        valid_field_key = (label, field_key)
+        field_info = valid_fields.get(valid_field_key, {})
+        field_api_name = field_info.get('api_name')
         field_data = {
             'field_key': field_key,  # Use actual key, not label
             'api_name': field_api_name or sanitize_api_name(field_key),  # Use mapped api_name or fallback
