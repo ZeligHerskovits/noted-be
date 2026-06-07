@@ -159,6 +159,7 @@ app.include_router(emr_types.manual_fields_router, prefix="/api/v1", tags=["Manu
 app.include_router(emr_types.results_router, prefix="/api/v1", tags=["EMR Type Results"])
 app.include_router(reference_tables.router, prefix="/api/v1", tags=["Reference Tables"])
 app.include_router(ai.router, prefix="/api/v1", tags=["AI"])
+app.include_router(ai.extraction_router, prefix="/api/v1", tags=["AI"])
 
 # Root endpoint to test if the API is running
 @app.get("/")

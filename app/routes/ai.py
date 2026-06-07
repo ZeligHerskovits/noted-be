@@ -23,12 +23,13 @@ from bs4 import BeautifulSoup
 from ..models import EMRTypeResult
 from ..schemas import SaveSelectedChunkRequest, SelectedFieldData
 from ..debug import debug
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from app.utils.xpath_generator import generate_xpath_for_all_fields
 load_dotenv()
 
 
 router = APIRouter(prefix="/ai", tags=["AI"])
+extraction_router = APIRouter(tags=["AI"])
 
 openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -59,6 +60,130 @@ class DeleteResultRequest(BaseModel):
     emr_type_id: str
     key: str
     value: str
+
+
+class ExtractSessionHtmlRequest(BaseModel):
+    pageUrl: str = ""
+    pageTitle: str = ""
+    bodyHtml: str
+    linkedRowHtml: str = ""
+    linkedTableHeaderHtml: str = ""
+
+
+def request_openai_json(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured on the vision server")
+
+    openai_base_url = (os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1") or "https://api.openai.com/v1").rstrip("/")
+    openai_model = os.getenv("OPENAI_MODEL", "gpt-5.5")
+    client = openai.OpenAI(api_key=openai_api_key, base_url=openai_base_url)
+
+    response = client.chat.completions.create(
+        model=openai_model,
+        response_format={"type": "json_object"},
+        messages=messages,
+    )
+
+    raw_content = response.choices[0].message.content if response.choices else "{}"
+    if not raw_content:
+        raw_content = "{}"
+
+    try:
+        parsed = json.loads(raw_content)
+    except json.JSONDecodeError:
+        json_match = re.search(r"\{[\s\S]*\}", raw_content)
+        if not json_match:
+            raise
+        parsed = json.loads(json_match.group(0))
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=500, detail="AI extraction returned no structured data")
+
+    return parsed
+
+
+@extraction_router.post("/extract-session-html")
+async def extract_session_html(request: ExtractSessionHtmlRequest):
+    try:
+        if not isinstance(request.bodyHtml, str) or not request.bodyHtml.strip():
+            raise HTTPException(status_code=400, detail="bodyHtml is required")
+
+        max_html_chars = int(os.getenv("MAX_HTML_CHARS", "120000"))
+        trimmed_html = request.bodyHtml
+
+        user_text = [
+            "You are extracting data for exactly one active session from the current webpage HTML.",
+            "Goal:",
+            "Detect exactly one currently active/open/focused session container (popup, modal, drawer, expanded panel, or selected inline section).",
+            "Do not extract multiple sessions.",
+            "Definition: visible/open session means the active open container, not only pixels currently visible in the viewport.",
+            "Include content that belongs to the same active open container even if it requires scrolling to see.",
+            "Do not limit extraction to viewport-only content.",
+            "Exclude hidden, collapsed, closed, background, or inactive session containers.",
+            "If multiple containers exist, use the one currently focused/open (for modals, use the topmost open modal).",
+            "A clicked session row HTML snippet is provided below. Treat that clicked row as the authoritative row linked to the open popup. Do not choose a different row and never fall back to the first row." if request.linkedRowHtml.strip() else "If a session list/table exists, use row data only when you can confidently match a single row to the active/open session.",
+            "Use the provided table header snippet to map the clicked row cells to keys. Copy that row's data columns into session_notes using header text as keys." if request.linkedRowHtml.strip() else "Never use the first row by default.",
+            "If the provided clicked row and popup disagree, prefer popup text for overlapping fields but still include the clicked row fields." if request.linkedRowHtml.strip() else "Only copy row fields when the row is supported by shared visible clues from the active session, such as client name, or other unique values.",
+            "From the confidently matched row, copy all data columns into session_notes as key-value pairs using header text as keys.",
+            "Ignore non-data or action-only columns.",
+            "Do not create a nested object for row fields.",
+            "Do not include any other rows.",
+            "If no confident matched row is found, do not add table row fields.",
+            "If both popup content and matched row data exist, prefer the popup content when there is any conflict.",
+            "If no session list/table exists, extract fields directly from the active/open session only.",
+            "Return all relevant active-session data and metadata (for example dates, goals, author names, timestamps, codes, status, provider) when present.",
+            "Section heading handling (dynamic): when a heading/group title appears above multiple label-value pairs, do not treat the heading as a field and do not prefix child keys with that heading.",
+            "For grouped rows under a heading, keep label-only keys exactly as shown in each row without merging or prefixing with the heading text.",
+            "Example pattern: heading 'example header' with rows 'example1: test1', 'example2: test2', => keys 'example1: test1', 'example2: test2'. dont make key as 'example header_example1: test1' or 'example header_example2: test2'.",
+            "Do not merge heading text into keys or values.",
+            "Do not create nested JSON for grouped fields; keep all keys flat inside session_notes.",
+            "Apply this rule to any similar heading/section dynamically, not just specific names.",
+            f"Page title: {request.pageTitle}",
+            f"Page URL: {request.pageUrl}",
+            "Return strict JSON only.",
+            "Return one top-level object.",
+            "Return key 'session_notes' as an object.",
+            "Put all extracted values (including matched row values) only inside session_notes as flat key-value pairs.",
+            "Do not return a row_match_basis key.",
+            "Return key 'xpath' containing the xpath of the extracted active session notes when confident.",
+            "If xpath is not confidently found, return xpath as an empty string.",
+            "CLICKED_TABLE_HEADER_HTML_START" if request.linkedTableHeaderHtml.strip() else "",
+            request.linkedTableHeaderHtml if request.linkedTableHeaderHtml.strip() else "",
+            "CLICKED_TABLE_HEADER_HTML_END" if request.linkedTableHeaderHtml.strip() else "",
+            "CLICKED_ROW_HTML_START" if request.linkedRowHtml.strip() else "",
+            request.linkedRowHtml if request.linkedRowHtml.strip() else "",
+            "CLICKED_ROW_HTML_END" if request.linkedRowHtml.strip() else "",
+            "HTML_START",
+            trimmed_html,
+            "HTML_END",
+        ]
+        user_text = "\n".join([line for line in user_text if line])
+
+        parsed = await asyncio.to_thread(
+            request_openai_json,
+            [
+                {
+                    "role": "system",
+                    "content": "You extract current session notes from EMR HTML source. Return strict JSON only and never guess missing content.",
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_text}],
+                },
+            ],
+        )
+
+        debug("Parsed HTML extraction result:\n{}", json.dumps(parsed, indent=2, ensure_ascii=False))
+        return {
+            "success": True,
+            "scrapedData": parsed,
+        }
+    except HTTPException:
+        raise
+    except Exception as error:
+        debug("Vision server HTML extraction error: {}", error)
+        raise HTTPException(status_code=500, detail=str(error) or "Unexpected HTML extraction error")
 
 # create_chunks function to split HTML content into chunks its should fit within the token limit
 def enhance_response_with_api_names(response_data: dict, db: Session) -> dict:
