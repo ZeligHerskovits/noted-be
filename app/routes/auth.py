@@ -5,6 +5,7 @@ from ..schemas import RegisterRequest, LoginRequest, TokenResponse, OTPVerifyReq
 from ..crud import get_user_by_email, create_user, verify_password, create_access_token, get_user_otp, mark_otp_used, reset_user_password, get_user_role, generate_and_store_otp, create_company, generate_device_token, get_password_hash, set_email_verification_token, verify_email_token, update_user_with_relations, get_user_emr_documentation_pairs
 import datetime
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.exc import OperationalError
 import jwt
 from typing import List
 import secrets
@@ -56,6 +57,11 @@ def get_current_user_with_role(required_roles: List[str]):
             raise HTTPException(status_code=401, detail="Token expired")
         except jwt.InvalidTokenError:
             raise HTTPException(status_code=401, detail="Invalid token")
+        except OperationalError:
+            raise HTTPException(
+                status_code=503,
+                detail="Database temporarily unavailable. Please retry shortly."
+            )
     return dependency
 
 def get_current_user_with_role_id(required_role_ids: List[int]):
@@ -82,6 +88,11 @@ def get_current_user_with_role_id(required_role_ids: List[int]):
             raise HTTPException(status_code=401, detail="Token expired")
         except jwt.InvalidTokenError:
             raise HTTPException(status_code=401, detail="Invalid token")
+        except OperationalError:
+            raise HTTPException(
+                status_code=503,
+                detail="Database temporarily unavailable. Please retry shortly."
+            )
     return dependency
 
 @router.post("/auth/register")

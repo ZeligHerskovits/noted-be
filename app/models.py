@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, Date, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, Date, Text, CheckConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.ext.mutable import MutableList
 from .db import Base
@@ -113,6 +113,25 @@ class EMRTypeResult(Base):
     instructions = Column(Text, nullable=True)
     status = Column(String(100), nullable=True)
     label = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class EMRTypeFieldResponseMapping(Base):
+    __tablename__ = "emr_type_field_responses"
+    __table_args__ = (
+        UniqueConstraint("emr_type_id", "field_name", name="uq_emr_type_field_name"),
+        CheckConstraint(
+            "response_value IN ('response 1', 'response 2', 'response 3')",
+            name="ck_emr_type_field_response_value",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    field_name = Column(String(255), nullable=False)
+    emr_type_id = Column(UUID(as_uuid=True), ForeignKey("emr_type.id", ondelete="CASCADE"), nullable=False)
+    response_value = Column(String(20), nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

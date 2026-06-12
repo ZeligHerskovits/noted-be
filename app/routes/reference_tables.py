@@ -11,7 +11,8 @@ from ..schemas import (
     ModalityCreate, ModalityUpdate, ModalityResponse,
     ModalityStepCreate, ModalityStepUpdate, ModalityStepResponse,
     ActivityCreate, ActivityUpdate, ActivityResponse,
-    SubActivityCreate, SubActivityUpdate, SubActivityResponse
+    SubActivityCreate, SubActivityUpdate, SubActivityResponse,
+    EmrTypeFieldResponseCreate, EmrTypeFieldResponseUpdate, EmrTypeFieldResponseRecord
 )
 from ..crud import (
     # Coping Skills
@@ -34,7 +35,10 @@ from ..crud import (
     update_activity, delete_activity,
     # Sub-Activities
     create_sub_activity, get_sub_activity, get_all_sub_activities,
-    update_sub_activity, delete_sub_activity
+    update_sub_activity, delete_sub_activity,
+    create_emr_type_field_response, get_emr_type_field_response,
+    get_emr_type_field_responses, update_emr_type_field_response,
+    delete_emr_type_field_response, get_emr_type
 )
 from app.routes.auth import get_current_user_with_role, get_current_user_with_role_id
 
@@ -463,3 +467,124 @@ def delete_sub_activity_endpoint(
     success = delete_sub_activity(db, sub_activity_id)
     if not success:
         raise HTTPException(status_code=404, detail="Sub-activity not found")
+
+
+def _serialize_emr_type_field_response(db: Session, record) -> EmrTypeFieldResponseRecord:
+    emr_type = get_emr_type(db, record.emr_type_id)
+    return EmrTypeFieldResponseRecord(
+        id=record.id,
+        field_name=record.field_name,
+        emr_type_id=record.emr_type_id,
+        emr_type_name=emr_type.name if emr_type else None,
+        response_value=record.response_value,
+        created_by=record.created_by,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+@router.get("/emr-type-field-responses", response_model=List[EmrTypeFieldResponseRecord])
+def list_emr_type_field_responses(
+    emr_type_id: UUID | None = None,
+    field_name: str | None = None,
+    response_value: str | None = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_with_role_id([1, 2, 3]))
+):
+    """List EMR type field response mappings with optional filters."""
+    if response_value is not None and response_value not in {"response 1", "response 2", "response 3"}:
+        raise HTTPException(status_code=400, detail="response_value must be one of: response 1, response 2, response 3")
+
+    records = get_emr_type_field_responses(
+        db,
+        emr_type_id=emr_type_id,
+        field_name=field_name,
+        response_value=response_value,
+    )
+    return [_serialize_emr_type_field_response(db, record) for record in records]
+
+
+@router.post("/emr-type-field-responses", response_model=EmrTypeFieldResponseRecord, status_code=status.HTTP_201_CREATED)
+def create_emr_type_field_response_endpoint(
+    payload: EmrTypeFieldResponseCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_with_role_id([1, 3]))
+):
+    """Create a new EMR type field response mapping."""
+    if not payload.field_name.strip():
+        raise HTTPException(status_code=400, detail="field_name cannot be empty")
+
+    emr_type = get_emr_type(db, payload.emr_type_id)
+    if not emr_type:
+        raise HTTPException(status_code=400, detail="emr_type_id does not exist")
+
+    try:
+        record = create_emr_type_field_response(
+            db,
+            field_name=payload.field_name,
+            emr_type_id=payload.emr_type_id,
+            response_value=payload.response_value,
+            created_by=current_user.id if hasattr(current_user, "id") else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return _serialize_emr_type_field_response(db, record)
+
+
+@router.get("/emr-type-field-responses/{mapping_id}", response_model=EmrTypeFieldResponseRecord)
+def get_emr_type_field_response_endpoint(
+    mapping_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_with_role_id([1, 2, 3]))
+):
+    """Get one EMR type field response mapping by id."""
+    record = get_emr_type_field_response(db, mapping_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="EMR type field response not found")
+    return _serialize_emr_type_field_response(db, record)
+
+
+@router.put("/emr-type-field-responses/{mapping_id}", response_model=EmrTypeFieldResponseRecord)
+def update_emr_type_field_response_endpoint(
+    mapping_id: UUID,
+    payload: EmrTypeFieldResponseUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_with_role_id([1, 3]))
+):
+    """Update one EMR type field response mapping by id."""
+    if payload.field_name is not None and not payload.field_name.strip():
+        raise HTTPException(status_code=400, detail="field_name cannot be empty")
+
+    if payload.emr_type_id is not None:
+        emr_type = get_emr_type(db, payload.emr_type_id)
+        if not emr_type:
+            raise HTTPException(status_code=400, detail="emr_type_id does not exist")
+
+    try:
+        updated = update_emr_type_field_response(
+            db,
+            mapping_id,
+            field_name=payload.field_name,
+            emr_type_id=payload.emr_type_id,
+            response_value=payload.response_value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="EMR type field response not found")
+
+    return _serialize_emr_type_field_response(db, updated)
+
+
+@router.delete("/emr-type-field-responses/{mapping_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_emr_type_field_response_endpoint(
+    mapping_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_with_role_id([1, 3]))
+):
+    """Delete one EMR type field response mapping by id."""
+    success = delete_emr_type_field_response(db, mapping_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="EMR type field response not found")

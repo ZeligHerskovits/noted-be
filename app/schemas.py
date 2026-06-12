@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date, timezone
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, Literal
 from uuid import UUID
 
 class RegisterRequest(BaseModel):
@@ -564,5 +564,31 @@ class SubActivityResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     
+    class Config:
+        from_attributes = True
+
+
+class EmrTypeFieldResponseCreate(BaseModel):
+    field_name: str
+    emr_type_id: UUID
+    response_value: Literal["response 1", "response 2", "response 3"]
+
+
+class EmrTypeFieldResponseUpdate(BaseModel):
+    field_name: Optional[str] = None
+    emr_type_id: Optional[UUID] = None
+    response_value: Optional[Literal["response 1", "response 2", "response 3"]] = None
+
+
+class EmrTypeFieldResponseRecord(BaseModel):
+    id: UUID
+    field_name: str
+    emr_type_id: UUID
+    emr_type_name: Optional[str] = None
+    response_value: Literal["response 1", "response 2", "response 3"]
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
     class Config:
         from_attributes = True

@@ -5,6 +5,7 @@ from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import logging
@@ -202,6 +203,15 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error"}
+    )
+
+
+@app.exception_handler(OperationalError)
+async def sqlalchemy_operational_error_handler(request: Request, exc: OperationalError):
+    logging.error(f"Database operational error for request {request.url}: {exc}")
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database temporarily unavailable. Please retry shortly."}
     )
 
 if __name__ == "__main__":

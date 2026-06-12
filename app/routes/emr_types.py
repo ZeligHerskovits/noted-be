@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
@@ -257,6 +258,11 @@ def get_all_emr_types_endpoint(
             if hasattr(emr, 'files'):
                 emr.files = with_signed_urls(emr.files)
         return emr_types
+    except OperationalError:
+        raise HTTPException(
+            status_code=503,
+            detail="Database temporarily unavailable. Please retry shortly."
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching EMR types: {str(e)}")
 
@@ -284,6 +290,11 @@ def get_emr_type_endpoint(
         return EmrTypeResponse.from_orm(emr_type)
     except HTTPException:
         raise
+    except OperationalError:
+        raise HTTPException(
+            status_code=503,
+            detail="Database temporarily unavailable. Please retry shortly."
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching EMR type: {str(e)}")
 

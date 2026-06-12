@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserEMRDocumentationPair, Modality, ModalityStep, Activity, SubActivity
+from .models import User, Otp, Role, Company, EmrType, EMRTypeField, EMRTypeResult, EMRTypeFieldResponseMapping, Client, Session as SessionModel, ManualField, CopingSkill, ClinicalSpecialty, DocumentationMethod, UserCopingSkill, UserClinicalSpecialty, UserEMRDocumentationPair, Modality, ModalityStep, Activity, SubActivity
 from passlib.context import CryptContext
 import jwt
 import datetime
@@ -387,6 +387,99 @@ def delete_emr_type(db: Session, emr_type_id: UUID):
             flag_modified(company, "emr")
 
     db.delete(emr_type)
+    db.commit()
+    return True
+
+
+def create_emr_type_field_response(
+    db: Session,
+    field_name: str,
+    emr_type_id: UUID,
+    response_value: str,
+    created_by: Optional[UUID] = None,
+):
+    field_name = field_name.strip()
+    existing = db.query(EMRTypeFieldResponseMapping).filter(
+        EMRTypeFieldResponseMapping.emr_type_id == emr_type_id,
+        EMRTypeFieldResponseMapping.field_name == field_name,
+    ).first()
+    if existing:
+        raise ValueError("A mapping already exists for this EMR type and field name")
+
+    mapping = EMRTypeFieldResponseMapping(
+        field_name=field_name,
+        emr_type_id=emr_type_id,
+        response_value=response_value,
+        created_by=created_by,
+    )
+    db.add(mapping)
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+def get_emr_type_field_response(db: Session, mapping_id: UUID):
+    return db.query(EMRTypeFieldResponseMapping).filter(
+        EMRTypeFieldResponseMapping.id == mapping_id
+    ).first()
+
+
+def get_emr_type_field_responses(
+    db: Session,
+    emr_type_id: Optional[UUID] = None,
+    field_name: Optional[str] = None,
+    response_value: Optional[str] = None,
+):
+    query = db.query(EMRTypeFieldResponseMapping)
+    if emr_type_id is not None:
+        query = query.filter(EMRTypeFieldResponseMapping.emr_type_id == emr_type_id)
+    if field_name is not None:
+        query = query.filter(EMRTypeFieldResponseMapping.field_name == field_name.strip())
+    if response_value is not None:
+        query = query.filter(EMRTypeFieldResponseMapping.response_value == response_value)
+    return query.order_by(EMRTypeFieldResponseMapping.created_at.desc()).all()
+
+
+def update_emr_type_field_response(
+    db: Session,
+    mapping_id: UUID,
+    field_name: Optional[str] = None,
+    emr_type_id: Optional[UUID] = None,
+    response_value: Optional[str] = None,
+):
+    mapping = get_emr_type_field_response(db, mapping_id)
+    if not mapping:
+        return None
+
+    new_field_name = field_name.strip() if field_name is not None else mapping.field_name
+    new_emr_type_id = emr_type_id if emr_type_id is not None else mapping.emr_type_id
+
+    duplicate = db.query(EMRTypeFieldResponseMapping).filter(
+        EMRTypeFieldResponseMapping.id != mapping_id,
+        EMRTypeFieldResponseMapping.emr_type_id == new_emr_type_id,
+        EMRTypeFieldResponseMapping.field_name == new_field_name,
+    ).first()
+    if duplicate:
+        raise ValueError("A mapping already exists for this EMR type and field name")
+
+    if field_name is not None:
+        mapping.field_name = new_field_name
+    if emr_type_id is not None:
+        mapping.emr_type_id = emr_type_id
+    if response_value is not None:
+        mapping.response_value = response_value
+
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+def delete_emr_type_field_response(db: Session, mapping_id: UUID):
+    mapping = get_emr_type_field_response(db, mapping_id)
+    if not mapping:
+        return False
+
+    db.delete(mapping)
     db.commit()
     return True
 
