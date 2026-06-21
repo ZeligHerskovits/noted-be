@@ -1,0 +1,54 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H noteddevapi.objectif.solutions >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh ubuntu@noteddevapi.objectif.solutions << 'EOF'
+            set -e
+
+            echo "🚀 Starting backend deploy..."
+
+            cd ~/noted-be
+
+            echo "📥 Pull latest code"
+            git pull origin main
+
+            echo "🐍 Activate virtual environment"
+            source venv/bin/activate
+
+            echo "📦 Install dependencies"
+            pip install -r requirements.txt --break-system-packages
+
+            echo "🧠 Run migrations"
+            python -m alembic heads || true
+            python -m alembic merge heads -m "merge migration heads" || echo "No merge needed"
+
+            find alembic/versions -name "*.py" -exec sed -i 's/sa\.text()/sa.Text()/g' {} \; || true
+
+            python -m alembic stamp head || true
+            python -m alembic upgrade head
+
+            echo "♻️ Restart FastAPI service"
+            sudo systemctl restart fastapi
+
+            echo "✅ Deploy complete"
+          EOF
