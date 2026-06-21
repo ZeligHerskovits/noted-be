@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-import logging
+import logging 
 import traceback
 from pathlib import Path
 from datetime import date, datetime
